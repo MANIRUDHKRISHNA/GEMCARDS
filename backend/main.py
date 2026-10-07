@@ -10,9 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 app = FastAPI(
-    title="Jiffy KYC Prototype API",
+    title="GEMCARDS",
     version="0.1.0",
-    description="Mock KYC orchestration API for the Flutter prototype. Not a production KYC service.",
+    description=" KYC orchestration API for the Flutter prototype.",
 )
 
 app.add_middleware(
