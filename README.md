@@ -139,8 +139,10 @@ POST /api/v1/kyc/{session_id}/address/upload
 POST /api/v1/kyc/{session_id}/submit
 ```
 
-KYC remains an in-memory prototype only. Existing request/response shapes and
-offline Flutter fallback behavior are unchanged.
+KYC remains an in-memory prototype only. Its existing request/response shapes
+are unchanged. Starting and submitting a session update the selected demo
+customer's application lifecycle to `kyc_in_progress` and `kyc_verified`;
+already active cards are not moved backwards.
 
 ### Customer and product routes
 
@@ -164,8 +166,12 @@ GET    /api/v1/rewards
 ```
 
 `GET /api/v1/customer/me` returns the selected synthetic customer. The dashboard
-returns `{ "customer", "cards", "recent_transactions", "open_fraud_alerts",
-"rewards" }`. Collection endpoints return JSON arrays. Card status is
+returns `{ "customer", "available_balance", "currency", "cards",
+"recent_transactions", "open_fraud_alerts", "rewards" }`. The balance is
+deterministic synthetic INR demo data. Collection endpoints return JSON arrays.
+The customer Flutter repository scopes card and transaction lists to the
+selected customer's card IDs even though the demo API has no authentication.
+Card status is
 `active`, `frozen`, or `closed`; control updates accept any non-empty subset of
 `daily_limit` (INR, 1,000–250,000), `international_enabled`,
 `contactless_enabled`, `online_enabled`, and `atm_enabled`. Virtual-card creation

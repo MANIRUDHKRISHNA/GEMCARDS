@@ -29,4 +29,29 @@ void main() {
       expect(fallback.reasons.single, contains('Offline demo'));
     },
   );
+
+  test('offline cards, transactions, disputes and virtual creation are stateful', () async {
+    final repository = DemoProductRepository();
+    final initialCards = await repository.loadCards();
+    final frozen = await repository.setCardFrozen(initialCards.first, true);
+    expect(frozen.status, CardStatus.frozen);
+    final controls = await repository.updateCardControls(frozen.id, {
+      'online_enabled': false,
+      'contactless_enabled': false,
+      'international_enabled': true,
+      'atm_enabled': false,
+      'daily_limit': 42000,
+    });
+    expect(controls.onlineEnabled, isFalse);
+    expect(controls.dailyLimit, 42000);
+    final virtual = await repository.createVirtualCard();
+    expect(virtual.virtual, isTrue);
+    expect((await repository.loadCards()), hasLength(3));
+    expect((await repository.loadTransactions()).first.merchant, 'Metro Mart');
+    final dispute = await repository.createDispute(
+      transactionId: 'TXN-101',
+      reason: 'Merchant recognition',
+    );
+    expect(dispute.status, 'open');
+  });
 }

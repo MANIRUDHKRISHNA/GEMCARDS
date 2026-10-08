@@ -13,6 +13,9 @@ class Customer(BaseModel):
     email: str
     kyc_status: str
     member_since: str
+    application_status: Literal[
+        "draft", "kyc_in_progress", "kyc_verified", "card_pending", "card_active"
+    ] = "draft"
 
 
 class CardControls(BaseModel):
@@ -126,6 +129,8 @@ class RewardSummary(BaseModel):
 
 class CustomerDashboard(BaseModel):
     customer: Customer
+    available_balance: float
+    currency: str = "INR"
     cards: list[Card]
     recent_transactions: list[Transaction]
     open_fraud_alerts: list[FraudAlert]

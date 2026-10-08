@@ -9,6 +9,7 @@ class Customer {
     required this.email,
     this.kycStatus = 'pending',
     this.memberSince = '',
+    this.applicationStatus = 'draft',
   });
 
   final String id;
@@ -16,6 +17,7 @@ class Customer {
   final String email;
   final String kycStatus;
   final String memberSince;
+  final String applicationStatus;
 
   factory Customer.fromJson(Map<String, dynamic> json) => Customer(
     id: json['id'] as String? ?? '',
@@ -23,6 +25,7 @@ class Customer {
     email: json['email'] as String? ?? '',
     kycStatus: json['kyc_status'] as String? ?? 'pending',
     memberSince: json['member_since'] as String? ?? '',
+    applicationStatus: json['application_status'] as String? ?? 'draft',
   );
 }
 
@@ -35,6 +38,7 @@ class Card {
     required this.virtual,
     this.network = 'Visa',
     this.expiry = '',
+    this.customerId = '',
     this.dailyLimit = 0,
     this.internationalEnabled = false,
     this.contactlessEnabled = true,
@@ -49,6 +53,7 @@ class Card {
   final bool virtual;
   final String network;
   final String expiry;
+  final String customerId;
   final double dailyLimit;
   final bool internationalEnabled;
   final bool contactlessEnabled;
@@ -79,6 +84,7 @@ class Card {
           'virtual',
       network: json['network'] as String? ?? 'Visa',
       expiry: json['expiry'] as String? ?? '',
+      customerId: json['customer_id'] as String? ?? '',
       dailyLimit: _number(json['daily_limit'] ?? json['limit']),
       internationalEnabled: json['international_enabled'] as bool? ?? false,
       contactlessEnabled: json['contactless_enabled'] as bool? ?? true,
@@ -191,6 +197,7 @@ class Dispute {
     required this.transactionId,
     required this.reason,
     required this.status,
+    this.details = '',
     this.customer = '',
     this.date = '',
     this.notes = const [],
@@ -200,6 +207,7 @@ class Dispute {
   final String transactionId;
   final String reason;
   final String status;
+  final String details;
   final String customer;
   final String date;
   final List<String> notes;
@@ -208,9 +216,10 @@ class Dispute {
     id: json['id'] as String? ?? '',
     transactionId: json['transaction_id'] as String? ?? '',
     reason: json['reason'] as String? ?? '',
+    details: json['details'] as String? ?? '',
     status: json['status'] as String? ?? 'open',
     customer: json['customer'] as String? ?? '',
-    date: json['date'] as String? ?? '',
+    date: json['created_at'] as String? ?? json['date'] as String? ?? '',
     notes: (json['notes'] as List<dynamic>? ?? const [])
         .map((value) => value.toString())
         .toList(),
@@ -242,6 +251,8 @@ class DashboardSummary {
     required this.transactions,
     required this.alerts,
     required this.rewards,
+    this.availableBalance = 0,
+    this.currency = 'INR',
   });
 
   final Customer customer;
@@ -249,6 +260,8 @@ class DashboardSummary {
   final List<CardTransaction> transactions;
   final List<FraudAlert> alerts;
   final RewardSummary rewards;
+  final double availableBalance;
+  final String currency;
 
   factory DashboardSummary.fromJson(
     Map<String, dynamic> json,
@@ -268,6 +281,8 @@ class DashboardSummary {
     rewards: RewardSummary.fromJson(
       json['rewards'] as Map<String, dynamic>? ?? const {},
     ),
+    availableBalance: _number(json['available_balance']),
+    currency: json['currency'] as String? ?? 'INR',
   );
 }
 

@@ -18,6 +18,7 @@ abstract class ProductRepository {
   Future<Dispute> createDispute({
     required String transactionId,
     required String reason,
+    String details = '',
   });
   Future<AuthorizationResult> simulateAuthorization({
     required String cardId,
@@ -35,6 +36,7 @@ class DemoProductRepository implements ProductRepository {
     email: 'alex.morgan@example.demo',
     kycStatus: 'verified',
     memberSince: '2024',
+    applicationStatus: 'card_active',
   );
   final List<Card> _cards = [
     const Card(
@@ -106,6 +108,7 @@ class DemoProductRepository implements ProductRepository {
       ),
     ],
     rewards: const RewardSummary(points: 1240, availableValue: 124),
+    availableBalance: 24680,
   );
 
   @override
@@ -195,12 +198,14 @@ class DemoProductRepository implements ProductRepository {
   Future<Dispute> createDispute({
     required String transactionId,
     required String reason,
+    String details = '',
   }) async {
     final dispute = Dispute(
       id: 'DSP-DEMO-${(_disputes.length + 1).toString().padLeft(3, '0')}',
       transactionId: transactionId,
       reason: reason,
       status: 'open',
+      details: details,
     );
     _disputes.add(dispute);
     return dispute;

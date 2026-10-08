@@ -42,9 +42,15 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
     try {
       final updated = await _repository.setCardFrozen(card, frozen);
       if (mounted) {
-        setState(
-          () => _frozenOverrides[card.id] = updated.status == CardStatus.frozen,
-        );
+        setState(() {
+          _frozenOverrides[updated.id] = updated.status == CardStatus.frozen;
+          if (_cardsOverride != null) {
+            _cardsOverride = [
+              for (final current in _cardsOverride!)
+                if (current.id == updated.id) updated else current,
+            ];
+          }
+        });
       }
     } on GemcardsApiException catch (error) {
       if (mounted) {
@@ -237,17 +243,15 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
             : _cardsError != null
             ? _RetryPanel(message: _cardsError!, onRetry: _openCards)
             : _Cards(
-                summary: summary,
-                primaryCard: primaryCard,
-                frozen: _isFrozen(primaryCard),
-                onFrozen: (value) => _setFrozen(primaryCard, value),
-                virtualCard: virtualCard,
-                virtualFrozen: virtualCard == null
-                    ? false
-                    : _isFrozen(virtualCard),
-                onVirtualFrozen: virtualCard == null
-                    ? null
-                    : (value) => _setFrozen(virtualCard!, value),
+                cards: visibleCards,
+                isFrozen: _isFrozen,
+                onFrozen: _setFrozen,
+                onCardUpdated: (updated) => setState(() {
+                  _cardsOverride = [
+                    for (final card in visibleCards)
+                      if (card.id == updated.id) updated else card,
+                  ];
+                }),
                 repository: _repository,
                 onCreateVirtual: _createVirtualCard,
                 isOffline: _repository.isOffline,
@@ -386,16 +390,44 @@ class _Home extends StatelessWidget {
           const SizedBox(height: 20),
           Text('Available balance', style: Theme.of(c).textTheme.labelLarge),
           const SizedBox(height: 4),
-          Text('₹ 24,680.00', style: Theme.of(c).textTheme.displaySmall),
+          Text(
+            '${summary.currency == 'INR' ? '₹' : '${summary.currency} '}${summary.availableBalance.toStringAsFixed(2)}',
+            style: Theme.of(c).textTheme.displaySmall,
+          ),
           const SizedBox(height: 20),
           GemCardVisual(card: summary.cards.first, frozen: frozen),
           const SizedBox(height: 20),
           _QuickActions(
             onCards: onCards,
             onActivity: onActivity,
-            transactions: summary.transactions,
+            repository: repository,
           ),
           const SizedBox(height: 26),
+          if (summary.alerts.isNotEmpty)
+            Material(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+                side: const BorderSide(color: AppTheme.border),
+              ),
+              child: ListTile(
+                leading: const Icon(
+                  Icons.shield_outlined,
+                  color: AppTheme.accentDark,
+                ),
+                title: Text(
+                  '${summary.alerts.length} security ${summary.alerts.length == 1 ? 'alert' : 'alerts'}',
+                ),
+                subtitle: const Text('Review recent account activity'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(c).push(
+                  MaterialPageRoute(
+                    builder: (_) => FraudActivityScreen(repository: repository),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -441,11 +473,11 @@ class _QuickActions extends StatelessWidget {
   const _QuickActions({
     required this.onCards,
     required this.onActivity,
-    required this.transactions,
+    required this.repository,
   });
   final VoidCallback onCards;
   final VoidCallback onActivity;
-  final List<CardTransaction> transactions;
+  final ProductRepository repository;
   @override
   Widget build(BuildContext c) => Row(
     children: [
@@ -463,7 +495,7 @@ class _QuickActions extends StatelessWidget {
           label: 'Spending',
           onTap: () => Navigator.of(c).push(
             MaterialPageRoute(
-              builder: (_) => SpendingScreen(transactions: transactions),
+              builder: (_) => SpendingScreen(repository: repository),
             ),
           ),
         ),
@@ -528,24 +560,18 @@ class _Action extends StatelessWidget {
 
 class _Cards extends StatefulWidget {
   const _Cards({
-    required this.summary,
-    required this.primaryCard,
-    required this.frozen,
+    required this.cards,
+    required this.isFrozen,
     required this.onFrozen,
-    required this.virtualCard,
-    required this.virtualFrozen,
-    required this.onVirtualFrozen,
+    required this.onCardUpdated,
     required this.repository,
     required this.onCreateVirtual,
     required this.isOffline,
   });
-  final DashboardSummary summary;
-  final Card primaryCard;
-  final bool frozen;
-  final ValueChanged<bool> onFrozen;
-  final Card? virtualCard;
-  final bool virtualFrozen;
-  final ValueChanged<bool>? onVirtualFrozen;
+  final List<Card> cards;
+  final bool Function(Card card) isFrozen;
+  final void Function(Card card, bool frozen) onFrozen;
+  final ValueChanged<Card> onCardUpdated;
   final ProductRepository repository;
   final VoidCallback onCreateVirtual;
   final bool isOffline;
@@ -556,25 +582,49 @@ class _Cards extends StatefulWidget {
 class _CardsState extends State<_Cards> {
   bool _updating = false;
   late bool _offline;
-  late Card _card;
+  String? _selectedCardId;
+  final ScrollController _scrollController = ScrollController();
+
+  Card get _card => widget.cards.firstWhere(
+    (card) => card.id == _selectedCardId,
+    orElse: () => widget.cards.first,
+  );
 
   @override
   void initState() {
     super.initState();
     _offline = widget.isOffline;
-    _card = widget.primaryCard;
+    _selectedCardId = widget.cards.first.id;
   }
 
   @override
   void didUpdateWidget(covariant _Cards oldWidget) {
     super.didUpdateWidget(oldWidget);
     _offline = widget.isOffline;
-    if (oldWidget.primaryCard.id != widget.primaryCard.id) {
-      _card = widget.primaryCard;
+    final oldIds = oldWidget.cards.map((card) => card.id).toSet();
+    for (final card in widget.cards) {
+      if (!oldIds.contains(card.id)) {
+        _selectedCardId = card.id;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _scrollController.hasClients) {
+            _scrollController.jumpTo(0);
+          }
+        });
+        break;
+      }
+    }
+    if (!widget.cards.any((card) => card.id == _selectedCardId)) {
+      _selectedCardId = widget.cards.first.id;
     }
   }
 
-  Future<void> _updateControl(String name, bool value) async {
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _updateControl(String name, Object value) async {
     setState(() => _updating = true);
     try {
       final updated = await widget.repository.updateCardControls(_card.id, {
@@ -582,9 +632,9 @@ class _CardsState extends State<_Cards> {
       });
       if (mounted) {
         setState(() {
-          _card = updated;
           _offline = widget.repository.isOffline;
         });
+        widget.onCardUpdated(updated);
       }
     } on GemcardsApiException catch (error) {
       if (mounted) {
@@ -597,14 +647,76 @@ class _CardsState extends State<_Cards> {
     }
   }
 
+  Future<void> _editDailyLimit() async {
+    var valueText = _card.dailyLimit.toStringAsFixed(0);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Daily spending limit'),
+        content: TextFormField(
+          initialValue: valueText,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          onChanged: (value) => valueText = value,
+          decoration: const InputDecoration(
+            labelText: 'Limit in INR',
+            prefixText: '₹ ',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, valueText.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (value == null) return;
+    final limit = int.tryParse(value);
+    if (limit == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a valid whole-number limit.')),
+        );
+      }
+      return;
+    }
+    await _updateControl('daily_limit', limit);
+  }
+
   @override
   Widget build(BuildContext c) => SafeArea(
     child: ListView(
+      controller: _scrollController,
       padding: const EdgeInsets.all(20),
       children: [
         Text('My cards', style: Theme.of(c).textTheme.headlineSmall),
         const SizedBox(height: 18),
-        GemCardVisual(card: _card, frozen: widget.frozen),
+        if (widget.cards.length > 1)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: widget.cards
+                .map(
+                  (card) => ChoiceChip(
+                    label: Text(
+                      card.virtual
+                          ? 'Virtual · ${card.lastFour}'
+                          : '${card.type} · ${card.lastFour}',
+                    ),
+                    selected: card.id == _card.id,
+                    onSelected: (_) =>
+                        setState(() => _selectedCardId = card.id),
+                  ),
+                )
+                .toList(),
+          ),
+        if (widget.cards.length > 1) const SizedBox(height: 14),
+        GemCardVisual(card: _card, frozen: widget.isFrozen(_card)),
         const SizedBox(height: 12),
         Text(
           '•••• ${_card.lastFour}  •  ${_card.type}',
@@ -622,54 +734,48 @@ class _CardsState extends State<_Cards> {
         SwitchListTile(
           isThreeLine: true,
           key: const ValueKey('freeze-card-control'),
-          value: widget.frozen,
-          onChanged: _updating ? null : widget.onFrozen,
+          value: widget.isFrozen(_card),
+          onChanged: _updating
+              ? null
+              : (value) => widget.onFrozen(_card, value),
           title: const Text('Freeze card'),
           subtitle: Text(
-            widget.frozen ? 'Card is temporarily frozen' : 'Card is active',
+            widget.isFrozen(_card)
+                ? 'Card is temporarily frozen'
+                : 'Card is active',
           ),
         ),
         _toggle(
           'Online payments',
           _card.onlineEnabled,
           (v) => _updateControl('online_enabled', v),
+          enabled: !_updating,
         ),
         _toggle(
           'Contactless payments',
           _card.contactlessEnabled,
           (v) => _updateControl('contactless_enabled', v),
+          enabled: !_updating,
         ),
         _toggle(
           'International payments',
           _card.internationalEnabled,
           (v) => _updateControl('international_enabled', v),
+          enabled: !_updating,
         ),
         _toggle(
           'ATM withdrawals',
           _card.atmEnabled,
           (v) => _updateControl('atm_enabled', v),
+          enabled: !_updating,
         ),
         ListTile(
           title: const Text('Daily spending limit'),
           trailing: Text('₹${_card.dailyLimit.toStringAsFixed(0)}'),
+          onTap: _updating ? null : _editDailyLimit,
         ),
         const Divider(),
-        if (widget.virtualCard != null)
-          ListTile(
-            leading: const Icon(Icons.credit_card_rounded),
-            title: const Text('View virtual card'),
-            onTap: () => Navigator.of(c).push(
-              MaterialPageRoute(
-                builder: (_) => VirtualCardScreen(
-                  card: widget.virtualCard!,
-                  frozen: widget.virtualFrozen,
-                  onFrozen: widget.onVirtualFrozen!,
-                  repository: widget.repository,
-                ),
-              ),
-            ),
-          ),
-        if (widget.virtualCard == null)
+        if (!widget.cards.any((card) => card.virtual))
           OutlinedButton.icon(
             onPressed: widget.onCreateVirtual,
             icon: const Icon(Icons.add_card_rounded),
@@ -680,8 +786,16 @@ class _CardsState extends State<_Cards> {
   );
 }
 
-Widget _toggle(String label, bool value, ValueChanged<bool> onChanged) =>
-    SwitchListTile(value: value, onChanged: onChanged, title: Text(label));
+Widget _toggle(
+  String label,
+  bool value,
+  ValueChanged<bool> onChanged, {
+  bool enabled = true,
+}) => SwitchListTile(
+  value: value,
+  onChanged: enabled ? onChanged : null,
+  title: Text(label),
+);
 
 class _Transactions extends StatefulWidget {
   const _Transactions({required this.summary, required this.repository});
@@ -868,8 +982,7 @@ class _More extends StatelessWidget {
           title: const Text('Spending insights'),
           onTap: () => Navigator.of(c).push(
             MaterialPageRoute(
-              builder: (_) =>
-                  SpendingScreen(transactions: summary.transactions),
+              builder: (_) => SpendingScreen(repository: repository),
             ),
           ),
         ),
@@ -1217,6 +1330,9 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
         '${MaterialLocalizations.of(c).formatMediumDate(transaction.time)}, ${TimeOfDay.fromDateTime(transaction.time).format(c)}',
       ),
       _detail(c, 'Status', transaction.status.name.toUpperCase()),
+      _detail(c, 'Country', transaction.country),
+      _detail(c, 'Channel', transaction.channel),
+      _detail(c, 'Authorization ID', transaction.authorizationId),
       _detail(c, 'Reference ID', transaction.id),
       if (transaction.reasons.isNotEmpty)
         _detail(c, 'Decision notes', transaction.reasons.join('\n')),
@@ -1224,27 +1340,7 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
       OutlinedButton.icon(
         onPressed: widget.repository == null
             ? null
-            : () async {
-                try {
-                  await widget.repository!.createDispute(
-                    transactionId: transaction.id,
-                    reason: 'Transaction review request',
-                  );
-                  if (c.mounted) {
-                    ScaffoldMessenger.of(c).showSnackBar(
-                      const SnackBar(
-                        content: Text('Dispute opened for demo review.'),
-                      ),
-                    );
-                  }
-                } on GemcardsApiException catch (error) {
-                  if (c.mounted) {
-                    ScaffoldMessenger.of(
-                      c,
-                    ).showSnackBar(SnackBar(content: Text(error.message)));
-                  }
-                }
-              },
+            : () => _showDisputeForm(c, transaction),
         icon: const Icon(Icons.flag_outlined),
         label: const Text('Report or dispute'),
       ),
@@ -1257,38 +1353,169 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
     title: Text(a),
     subtitle: Text(b, style: Theme.of(c).textTheme.bodyMedium),
   );
+
+  Future<void> _showDisputeForm(
+    BuildContext context,
+    CardTransaction transaction,
+  ) async {
+    var reasonValue = 'Unrecognized transaction';
+    var detailsValue = '';
+    String? validationError;
+    final submission = await showDialog<({String reason, String details})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Report transaction'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${transaction.merchant} · ₹${transaction.amount.toStringAsFixed(0)}',
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                initialValue: reasonValue,
+                autofocus: true,
+                maxLength: 120,
+                onChanged: (value) => reasonValue = value,
+                decoration: InputDecoration(
+                  labelText: 'Reason for review',
+                  errorText: validationError,
+                ),
+              ),
+              TextFormField(
+                initialValue: detailsValue,
+                maxLines: 3,
+                maxLength: 500,
+                onChanged: (value) => detailsValue = value,
+                decoration: const InputDecoration(
+                  labelText: 'Additional details (optional)',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = reasonValue.trim();
+                if (value.length < 3) {
+                  setDialogState(
+                    () => validationError = 'Enter at least 3 characters.',
+                  );
+                  return;
+                }
+                Navigator.pop(dialogContext, (
+                  reason: value,
+                  details: detailsValue.trim(),
+                ));
+              },
+              child: const Text('Submit dispute'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (submission == null || !context.mounted) return;
+    try {
+      await widget.repository!.createDispute(
+        transactionId: transaction.id,
+        reason: submission.reason,
+        details: submission.details,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dispute opened for demo review.')),
+        );
+      }
+    } on GemcardsApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
 }
 
-class SpendingScreen extends StatelessWidget {
-  const SpendingScreen({required this.transactions, super.key});
-  final List<CardTransaction> transactions;
+class SpendingScreen extends StatefulWidget {
+  const SpendingScreen({required this.repository, super.key});
+  final ProductRepository repository;
+
+  @override
+  State<SpendingScreen> createState() => _SpendingScreenState();
+}
+
+class _SpendingScreenState extends State<SpendingScreen> {
+  late Future<List<CardTransaction>> _transactions;
+
+  @override
+  void initState() {
+    super.initState();
+    _transactions = widget.repository.loadTransactions();
+  }
+
+  void _retry() => setState(() {
+    _transactions = widget.repository.loadTransactions();
+  });
 
   @override
   Widget build(BuildContext c) => Scaffold(
     appBar: AppBar(title: const Text('Spending')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Text(
-          '₹${transactions.fold<double>(0, (sum, item) => sum + item.amount).toStringAsFixed(0)}',
-          style: Theme.of(c).textTheme.displaySmall,
-        ),
-        const Text('Monthly spend', style: TextStyle(color: AppTheme.muted)),
-        const SizedBox(height: 24),
-        _SpendSummary(transactions: transactions),
-        const SizedBox(height: 20),
-        if (transactions.isEmpty)
-          const _EmptyState(
-            icon: Icons.bar_chart_outlined,
-            title: 'No spending to summarize',
-            message: 'Card activity will appear here when available.',
-          )
-        else
-          ...transactions.map(
-            (transaction) =>
-                _TransactionTile(transaction: transaction, onTap: () {}),
-          ),
-      ],
+    body: FutureBuilder<List<CardTransaction>>(
+      future: _transactions,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return _RetryPanel(
+            message: 'Spending data is unavailable.',
+            onRetry: _retry,
+          );
+        }
+        final transactions = snapshot.requireData;
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Text(
+              '₹${transactions.fold<double>(0, (sum, item) => sum + item.amount).toStringAsFixed(0)}',
+              style: Theme.of(c).textTheme.displaySmall,
+            ),
+            const Text(
+              'Total card activity',
+              style: TextStyle(color: AppTheme.muted),
+            ),
+            const SizedBox(height: 24),
+            _SpendSummary(transactions: transactions),
+            const SizedBox(height: 20),
+            if (transactions.isEmpty)
+              const _EmptyState(
+                icon: Icons.bar_chart_outlined,
+                title: 'No spending to summarize',
+                message: 'Card activity will appear here when available.',
+              )
+            else
+              ...transactions.map(
+                (transaction) => _TransactionTile(
+                  transaction: transaction,
+                  onTap: () => Navigator.of(c).push(
+                    MaterialPageRoute(
+                      builder: (_) => TransactionDetailsScreen(
+                        transaction: transaction,
+                        repository: widget.repository,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     ),
   );
 }
@@ -1504,17 +1731,34 @@ class ApplicationStatusScreen extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       children: [
         Text(
-          customer.kycStatus == 'verified'
-              ? 'Identity verified'
-              : 'Identity verification needed',
+          _titleForStatus(customer.applicationStatus),
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         const SizedBox(height: 8),
         Text(
-          'Demo status: ${customer.kycStatus}',
+          'Application stage: ${customer.applicationStatus.replaceAll('_', ' ')}',
           style: const TextStyle(color: AppTheme.muted),
         ),
         const SizedBox(height: 24),
+        ...const [
+          'draft',
+          'kyc_in_progress',
+          'kyc_verified',
+          'card_pending',
+          'card_active',
+        ].map(
+          (stage) => ListTile(
+            dense: true,
+            leading: Icon(
+              _stages.indexOf(stage) <=
+                      _stages.indexOf(customer.applicationStatus)
+                  ? Icons.check_circle
+                  : Icons.radio_button_unchecked,
+              color: AppTheme.success,
+            ),
+            title: Text(stage.replaceAll('_', ' ')),
+          ),
+        ),
         FilledButton.icon(
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (_) => const KycFlowScreen()),
@@ -1525,6 +1769,21 @@ class ApplicationStatusScreen extends StatelessWidget {
       ],
     ),
   );
+
+  static const _stages = [
+    'draft',
+    'kyc_in_progress',
+    'kyc_verified',
+    'card_pending',
+    'card_active',
+  ];
+  String _titleForStatus(String status) => status == 'card_active'
+      ? 'Your GEMCARD is active'
+      : status == 'card_pending'
+      ? 'Your card is being prepared'
+      : status == 'kyc_verified'
+      ? 'Identity verified'
+      : 'Identity verification needed';
 }
 
 class DisputesScreen extends StatefulWidget {

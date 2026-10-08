@@ -14,6 +14,7 @@ customers: dict[str, Customer] = {
         email="alex.morgan@example.demo",
         kyc_status="verified",
         member_since="2026-10-01",
+        application_status="card_active",
     ),
     "CUS-DEMO-002": Customer(
         id="CUS-DEMO-002",
@@ -21,7 +22,13 @@ customers: dict[str, Customer] = {
         email="priya.shah@example.demo",
         kyc_status="under_review",
         member_since="2026-10-03",
+        application_status="kyc_in_progress",
     ),
+}
+
+available_balances: dict[str, float] = {
+    DEMO_CUSTOMER_ID: 24680.00,
+    "CUS-DEMO-002": 18450.00,
 }
 
 cards: dict[str, Card] = {

@@ -16,6 +16,7 @@ def customer_dashboard() -> CustomerDashboard:
     customer_id = store.DEMO_CUSTOMER_ID
     return CustomerDashboard(
         customer=store.get_customer(customer_id),
+        available_balance=store.available_balances[customer_id],
         cards=[card for card in store.cards.values() if card.customer_id == customer_id],
         recent_transactions=sorted(
             (

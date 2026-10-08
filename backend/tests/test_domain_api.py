@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.domain import store
 from app.main import app
 
 client = TestClient(app)
@@ -172,8 +173,11 @@ def test_customer_dashboard_disputes_rewards_and_virtual_card() -> None:
 
     assert customer.status_code == 200
     assert customer.json()["id"] == "CUS-DEMO-001"
+    assert customer.json()["application_status"] == "card_active"
     assert dashboard.status_code == 200
     assert dashboard.json()["customer"]["id"] == "CUS-DEMO-001"
+    assert dashboard.json()["available_balance"] == 24680
+    assert dashboard.json()["currency"] == "INR"
     assert rewards.status_code == 200
     assert rewards.json()["points"] == 1240
     assert dispute.status_code == 201
@@ -184,3 +188,34 @@ def test_customer_dashboard_disputes_rewards_and_virtual_card() -> None:
     )
     assert virtual_card.status_code == 201
     assert virtual_card.json()["card_type"] == "virtual"
+
+
+def test_kyc_updates_the_customer_application_lifecycle() -> None:
+    customer = store.get_customer(store.DEMO_CUSTOMER_ID)
+    original_kyc_status = customer.kyc_status
+    original_application_status = customer.application_status
+    customer.kyc_status = "pending"
+    customer.application_status = "draft"
+
+    try:
+        created = client.post(
+            "/api/v1/kyc/session",
+            json={"country": "India", "document_type": "National ID"},
+        )
+        assert created.status_code == 200
+        assert client.get("/api/v1/customer/me").json()["application_status"] == (
+            "kyc_in_progress"
+        )
+
+        submitted = client.post(
+            f"/api/v1/kyc/{created.json()['id']}/submit",
+            json={"pep_declared": False, "terms_accepted": True},
+        )
+        customer_response = client.get("/api/v1/customer/me")
+
+        assert submitted.status_code == 200
+        assert customer_response.json()["kyc_status"] == "verified"
+        assert customer_response.json()["application_status"] == "kyc_verified"
+    finally:
+        customer.kyc_status = original_kyc_status
+        customer.application_status = original_application_status

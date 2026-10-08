@@ -17,6 +17,8 @@ class CustomerRepository {
       transactions: dashboard.transactions,
       alerts: dashboard.alerts,
       rewards: dashboard.rewards,
+      availableBalance: dashboard.availableBalance,
+      currency: dashboard.currency,
     );
   }
 
@@ -30,6 +32,16 @@ class CardRepository {
 
   Future<List<Card>> getCards() async =>
       (await api.cards()).map(Card.fromJson).toList();
+
+  Future<List<Card>> getCustomerCards() async {
+    final customer = await api.customer();
+    final cards = await api.cards();
+    final customerId = customer['id'] as String? ?? '';
+    return cards
+        .where((card) => card['customer_id'] == customerId)
+        .map(Card.fromJson)
+        .toList();
+  }
 
   Future<Card> getCard(String id) async => Card.fromJson(await api.card(id));
 
@@ -49,6 +61,24 @@ class TransactionRepository {
 
   Future<List<CardTransaction>> getTransactions() async =>
       (await api.transactions()).map(CardTransaction.fromJson).toList();
+
+  Future<List<CardTransaction>> getCustomerTransactions() async {
+    final customer = await api.customer();
+    final cards = await api.cards();
+    final customerId = customer['id'] as String? ?? '';
+    final customerCardIds = cards
+        .where((card) => card['customer_id'] == customerId)
+        .map((card) => card['id'] as String?)
+        .whereType<String>()
+        .toSet();
+    final transactions = await api.transactions();
+    return transactions
+        .where(
+          (transaction) => customerCardIds.contains(transaction['card_id']),
+        )
+        .map(CardTransaction.fromJson)
+        .toList();
+  }
 
   Future<CardTransaction> getTransaction(String id) async =>
       CardTransaction.fromJson(await api.transaction(id));
@@ -265,7 +295,8 @@ class ApiProductRepository implements ProductRepository {
       _read(customersApi.getMe, offline.loadCustomer);
 
   @override
-  Future<List<Card>> loadCards() => _read(cardsApi.getCards, offline.loadCards);
+  Future<List<Card>> loadCards() =>
+      _read(cardsApi.getCustomerCards, offline.loadCards);
 
   @override
   Future<Card> loadCard(String cardId) =>
@@ -292,13 +323,21 @@ class ApiProductRepository implements ProductRepository {
 
   @override
   Future<List<CardTransaction>> loadTransactions() =>
-      _read(transactionsApi.getTransactions, offline.loadTransactions);
+      _read(transactionsApi.getCustomerTransactions, offline.loadTransactions);
 
   @override
-  Future<CardTransaction> loadTransaction(String transactionId) => _read(
-    () => transactionsApi.getTransaction(transactionId),
-    () => offline.loadTransaction(transactionId),
-  );
+  Future<CardTransaction> loadTransaction(String transactionId) =>
+      _read(() async {
+        final transaction = await transactionsApi.getTransaction(transactionId);
+        final cards = await cardsApi.getCustomerCards();
+        if (!cards.any((card) => card.id == transaction.cardId)) {
+          throw const GemcardsApiException(
+            'This transaction is not part of your customer account.',
+            statusCode: 403,
+          );
+        }
+        return transaction;
+      }, () => offline.loadTransaction(transactionId));
 
   @override
   Future<RewardSummary> loadRewards() =>
@@ -328,11 +367,20 @@ class ApiProductRepository implements ProductRepository {
   Future<Dispute> createDispute({
     required String transactionId,
     required String reason,
+    String details = '',
   }) => _read(
     () async => Dispute.fromJson(
-      await api.createDispute(transactionId: transactionId, reason: reason),
+      await api.createDispute(
+        transactionId: transactionId,
+        reason: reason,
+        details: details,
+      ),
     ),
-    () => offline.createDispute(transactionId: transactionId, reason: reason),
+    () => offline.createDispute(
+      transactionId: transactionId,
+      reason: reason,
+      details: details,
+    ),
   );
 
   @override

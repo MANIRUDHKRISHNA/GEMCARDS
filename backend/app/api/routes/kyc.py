@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from app.domain import store
+
 router = APIRouter(prefix='/api/v1/kyc', tags=['kyc'])
 
 class SessionCreate(BaseModel):
@@ -32,7 +34,20 @@ def save(session: Session) -> Session: session.updated_at = now(); sessions[sess
 
 @router.post('/session', response_model=Session)
 def create(payload: SessionCreate) -> Session:
-    stamp = now(); session = Session(id=str(uuid4()), country=payload.country, document_type=payload.document_type, created_at=stamp, updated_at=stamp); sessions[session.id] = session; return session
+    stamp = now()
+    session = Session(
+        id=str(uuid4()),
+        country=payload.country,
+        document_type=payload.document_type,
+        created_at=stamp,
+        updated_at=stamp,
+    )
+    sessions[session.id] = session
+    customer = store.get_customer(store.DEMO_CUSTOMER_ID)
+    if customer.application_status != 'card_active' and customer.kyc_status != 'verified':
+        customer.application_status = 'kyc_in_progress'
+        customer.kyc_status = 'in_progress'
+    return session
 @router.get('/{session_id}', response_model=Session)
 def read(session_id: str) -> Session: return get(session_id)
 @router.get('/{session_id}/status', response_model=Session)
@@ -55,5 +70,13 @@ async def upload(session_id: str, file: UploadFile = File(...)) -> dict[str, Any
     return {'filename': file.filename, 'content_type': file.content_type, 'size': len(content), 'accepted': True}
 @router.post('/{session_id}/submit', response_model=Session)
 def submit(session_id: str, payload: SubmitData) -> Session:
-    if not payload.terms_accepted: raise HTTPException(400, 'Terms must be accepted')
-    session = get(session_id); session.declarations = payload.model_dump(); session.status = 'verified'; return save(session)
+    if not payload.terms_accepted:
+        raise HTTPException(400, 'Terms must be accepted')
+    session = get(session_id)
+    session.declarations = payload.model_dump()
+    session.status = 'verified'
+    customer = store.get_customer(store.DEMO_CUSTOMER_ID)
+    customer.kyc_status = 'verified'
+    if customer.application_status != 'card_active':
+        customer.application_status = 'kyc_verified'
+    return save(session)
