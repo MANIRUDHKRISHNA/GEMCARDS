@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -32,6 +34,8 @@ class CameraCaptureScreen extends StatefulWidget {
 class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
   CameraController? _controller;
   bool _loading = true;
+  bool _cameraFailed = false;
+  bool _flashOn = false;
   String _feedback = 'Position the document inside the frame';
 
   @override
@@ -65,6 +69,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _cameraFailed = true;
         _feedback = 'Camera unavailable. Check camera permission.';
       });
     }
@@ -92,6 +97,19 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
 
     setState(() => _feedback = 'Capturing... hold still');
     final file = await controller.takePicture();
+    if (!mounted) return;
+    final usePhoto = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Use this photo?'),
+        content: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(file.path), fit: BoxFit.cover)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Retake')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Use photo')),
+        ],
+      ),
+    );
+    if (usePhoto != true) { if (mounted) setState(() => _feedback = 'Position the document inside the frame'); return; }
     var ocrText = '';
     if (widget.runOcr) {
       setState(() => _feedback = 'Reading document text...');
@@ -106,6 +124,18 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
     Navigator.of(context).pop(
       CameraCaptureResult(path: file.path, ocrText: ocrText),
     );
+  }
+
+  Future<void> _toggleFlash() async {
+    final controller = _controller;
+    if (controller == null) return;
+    final next = !_flashOn;
+    try {
+      await controller.setFlashMode(next ? FlashMode.torch : FlashMode.off);
+      if (mounted) setState(() => _flashOn = next);
+    } catch (_) {
+      if (mounted) setState(() => _feedback = 'Flash is not available on this camera.');
+    }
   }
 
   @override
@@ -124,6 +154,8 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
         children: [
           if (!_loading && controller != null && controller.value.isInitialized)
             CameraPreview(controller)
+          else if (_cameraFailed)
+            Center(child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.no_photography_outlined, color: Colors.white, size: 52), const SizedBox(height: 16), const Text('Camera unavailable', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)), const SizedBox(height: 8), const Text('Return to the document screen and use the demo fallback to continue.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70))])) )
           else
             const Center(child: CircularProgressIndicator(color: Colors.white)),
           Positioned.fill(
@@ -159,6 +191,14 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+          Positioned(
+            right: 18, bottom: 36,
+            child: IconButton.filledTonal(
+              tooltip: 'Toggle flash',
+              onPressed: _controller == null ? null : _toggleFlash,
+              icon: Icon(_flashOn ? Icons.flash_on : Icons.flash_off),
             ),
           ),
           Positioned(

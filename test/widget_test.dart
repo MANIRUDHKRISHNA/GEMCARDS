@@ -14,8 +14,8 @@ void main() {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const JiffyKycApp());
 
-    // Verify that our counter starts at 0.
     expect(find.text('Verify your identity'), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('KYC PROTOTYPE'), findsOneWidget);
   });
 }

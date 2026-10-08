@@ -1,4 +1,4 @@
-# NSDL Jiffy KYC Prototype
+# NSDL GEMCARDS
 
 A two-day Android prototype for a six-step digital KYC onboarding flow built with Flutter/Dart and a small FastAPI backend.
 

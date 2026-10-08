@@ -14,7 +14,7 @@ class JiffyKycApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Jiffy KYC Prototype',
+      title: 'GEMCARDS',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       home: const KycFlowScreen(),

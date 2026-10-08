@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme/app_theme.dart';
 import '../models/kyc_state.dart';
+import '../repositories/kyc_repository.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/status_card.dart';
 import '../widgets/step_header.dart';
@@ -22,12 +23,13 @@ class KycFlowScreen extends StatefulWidget {
 
 class _KycFlowScreenState extends State<KycFlowScreen> {
   final KycState kyc = KycState();
+  final KycRepository repository = MockKycRepository();
   final addressController = TextEditingController();
   int step = 1;
   bool submitting = false;
 
   static const countries = ['India', 'United Kingdom', 'United States'];
-  static const documents = ['Passport', "Driver's License", 'National ID Card'];
+  static const documents = ['Passport', "Driver's License", 'National ID'];
 
   @override
   void dispose() {
@@ -59,6 +61,33 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         kyc.backCaptured = true;
       }
     });
+    if (front && mounted) _editOcrDetails(result.ocrText.isEmpty);
+  }
+
+  Future<void> _editOcrDetails(bool failed) async {
+    final name = TextEditingController(text: kyc.fullName);
+    final dob = TextEditingController(text: kyc.dob);
+    final id = TextEditingController(text: kyc.idNumber);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 8, 20, MediaQuery.viewInsetsOf(sheetContext).bottom + 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(failed ? "We couldn't read the document automatically" : 'Check extracted details', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(failed ? 'Enter the details manually to continue the prototype.' : 'OCR can be inaccurate. Please correct these details.', style: const TextStyle(color: AppTheme.muted)),
+          const SizedBox(height: 16),
+          TextField(controller: name, decoration: const InputDecoration(labelText: 'Full name')),
+          const SizedBox(height: 10), TextField(controller: dob, decoration: const InputDecoration(labelText: 'Date of birth')),
+          const SizedBox(height: 10), TextField(controller: id, decoration: const InputDecoration(labelText: 'ID number')),
+          const SizedBox(height: 16),
+          PrimaryButton(label: 'Confirm details', onPressed: () { setState(() { kyc.fullName = name.text.trim(); kyc.dob = dob.text.trim(); kyc.idNumber = id.text.trim(); }); Navigator.pop(sheetContext); }),
+        ]),
+      ),
+    );
+    name.dispose(); dob.dispose(); id.dispose();
   }
 
   void _applyOcr(String text) {
@@ -96,6 +125,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
     if (!mounted || result == null) return;
     setState(() {
       kyc.livenessPassed = result.passed;
+      kyc.selfieCaptured = result.passed;
       kyc.faceMatchScore = result.score;
     });
   }
@@ -106,7 +136,14 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
     );
     if (!mounted || result.isEmpty) return;
-    setState(() => kyc.addressDocument = result.single.name);
+    final file = result.single;
+    final size = await file.length() ?? 0;
+    if (!mounted) return;
+    if (size > 10 * 1024 * 1024) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Choose a file smaller than 10 MB.')));
+      return;
+    }
+    setState(() { kyc.addressDocument = file.name; kyc.addressDocumentBytes = size; });
   }
 
   bool _canContinue() {
@@ -120,7 +157,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
       case 4:
         return addressController.text.trim().isNotEmpty && kyc.addressDocument.isNotEmpty;
       case 5:
-        return kyc.termsAccepted;
+        return kyc.declarationsComplete;
       default:
         return true;
     }
@@ -128,12 +165,25 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
 
   Future<void> _continue() async {
     if (!_canContinue()) return;
+    if (step == 1 && kyc.sessionId == null) {
+      setState(() => submitting = true);
+      try {
+        kyc.sessionId = await repository.startSession(country: kyc.country, documentType: kyc.documentType);
+      } catch (_) {
+        kyc.sessionId = 'offline-demo';
+      }
+      if (!mounted) return;
+      setState(() { submitting = false; step = 2; });
+      return;
+    }
     if (step == 5) {
       setState(() => submitting = true);
-      await Future<void>.delayed(const Duration(milliseconds: 900));
+      setState(() => kyc.processingStatus = ProcessingStatus.processing);
+      final result = await repository.submit(kyc);
       if (!mounted) return;
       setState(() {
         submitting = false;
+        kyc.processingStatus = result;
         step = 6;
       });
       return;
@@ -154,7 +204,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Jiffy KYC',
+          'GEMCARDS',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
         actions: [
@@ -166,7 +216,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
               borderRadius: BorderRadius.circular(20),
             ),
             child: const Text(
-              'DEMO',
+              'KYC PROTOTYPE',
               style: TextStyle(
                 color: AppTheme.accentDark,
                 fontWeight: FontWeight.w900,
@@ -230,7 +280,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         const StepHeader(
           step: 1,
           title: 'Verify your identity',
-          subtitle: 'A secure digital KYC journey. It should take around 2 minutes.',
+          subtitle: 'Complete a quick verification to continue. Estimated time: 2 minutes.',
         ),
         const SizedBox(height: 24),
         const StatusCard(
@@ -287,6 +337,11 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
           complete: kyc.backCaptured,
           onTap: () => _captureDocument(front: false),
         ),
+        TextButton.icon(
+          onPressed: () => setState(() { kyc.frontCaptured = true; kyc.backCaptured = true; }),
+          icon: const Icon(Icons.accessibility_new_rounded),
+          label: const Text('Camera unavailable? Use the demo capture fallback'),
+        ),
         const SizedBox(height: 22),
         Container(
           padding: const EdgeInsets.all(18),
@@ -305,7 +360,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         ),
         const SizedBox(height: 10),
         const Text(
-          'OCR values are editable in the next production iteration. For this prototype they are shown as demo-safe values.',
+          'OCR output is untrusted. Re-capture the front to review or correct the extracted details.',
           style: TextStyle(color: AppTheme.muted, fontSize: 12, height: 1.35),
         ),
       ],
@@ -383,17 +438,24 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) => const Padding(
+      builder: (sheetContext) => Padding(
         padding: EdgeInsets.fromLTRB(20, 8, 20, 30),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Accessibility path', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            SizedBox(height: 8),
-            Text('In production, this should route the customer to an alternative regulated verification method instead of forcing a physical movement.'),
-            SizedBox(height: 12),
-            Text('Prototype behaviour: contact-assisted verification would be offered here.'),
+            const Text('Accessibility path', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            const Text('In production, this routes to an alternative regulated verification method. This prototype can continue with a clearly simulated assisted check.'),
+            const SizedBox(height: 16),
+            PrimaryButton(
+              label: 'Complete simulated assisted check',
+              icon: Icons.check_circle_outline,
+              onPressed: () {
+                setState(() { kyc.selfieCaptured = true; kyc.livenessPassed = true; kyc.faceMatchScore = .96; });
+                Navigator.pop(sheetContext);
+              },
+            ),
           ],
         ),
       ),
@@ -447,7 +509,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
                       Text(
                         kyc.addressDocument.isEmpty
                             ? 'Utility bill, bank statement or tax document'
-                            : kyc.addressDocument,
+                            : '${kyc.addressDocument} • ${((kyc.addressDocumentBytes ?? 0) / 1024).ceil()} KB',
                         style: const TextStyle(color: AppTheme.muted, fontSize: 13),
                       ),
                     ],
@@ -458,6 +520,12 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
             ),
           ),
         ),
+        if (kyc.addressDocument.isNotEmpty)
+          TextButton.icon(
+            onPressed: () => setState(() { kyc.addressDocument = ''; kyc.addressDocumentBytes = null; }),
+            icon: const Icon(Icons.close),
+            label: const Text('Remove selected file'),
+          ),
       ],
     );
   }
@@ -492,17 +560,24 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         ),
         const SizedBox(height: 18),
         CheckboxListTile(
+          value: kyc.accuracyDeclared,
+          onChanged: (value) => setState(() => kyc.accuracyDeclared = value ?? false),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('I confirm the information provided is accurate.'),
+          controlAffinity: ListTileControlAffinity.leading,
+        ),
+        CheckboxListTile(
           value: kyc.pepDeclared,
           onChanged: (value) => setState(() => kyc.pepDeclared = value ?? false),
           contentPadding: EdgeInsets.zero,
-          title: const Text('I confirm the politically exposed person declaration is accurate.'),
+          title: const Text('I am not a politically exposed person (prototype declaration).'),
           controlAffinity: ListTileControlAffinity.leading,
         ),
         CheckboxListTile(
           value: kyc.termsAccepted,
           onChanged: (value) => setState(() => kyc.termsAccepted = value ?? false),
           contentPadding: EdgeInsets.zero,
-          title: const Text('I accept the terms and consent to this verification process.'),
+          title: const Text('I agree to the terms and conditions.'),
           controlAffinity: ListTileControlAffinity.leading,
         ),
       ],
@@ -530,7 +605,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         ),
         const SizedBox(height: 28),
         const Text(
-          'Verification complete',
+          'Prototype verification complete',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
         ),
