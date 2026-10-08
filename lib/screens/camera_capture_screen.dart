@@ -135,6 +135,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
       }
       return;
     }
+    if (!mounted) return;
     var ocrText = '';
     if (widget.runOcr) {
       setState(() => _feedback = 'Reading document text...');
