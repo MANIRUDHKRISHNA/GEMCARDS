@@ -18,7 +18,7 @@ class PrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 54,
+      height: 58,
       child: FilledButton.icon(
         onPressed: onPressed,
         icon: Icon(icon ?? Icons.arrow_forward_rounded),
@@ -27,11 +27,11 @@ class PrimaryButton extends StatelessWidget {
           backgroundColor: AppTheme.accentDark,
           foregroundColor: Colors.white,
           disabledBackgroundColor: AppTheme.border,
-          disabledForegroundColor: AppTheme.muted,
+          disabledForegroundColor: AppTheme.ink.withValues(alpha: .55),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          textStyle: const TextStyle(fontWeight: FontWeight.w800),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
         ),
       ),
     );

@@ -35,38 +35,172 @@ class _WelcomeScreenState extends State<_WelcomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() => _visible = true); });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _visible = true);
+    });
   }
 
-  void _start() => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const KycFlowScreen()));
+  void _start() => Navigator.of(
+    context,
+  ).pushReplacement(MaterialPageRoute(builder: (_) => const KycFlowScreen()));
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 500), opacity: _visible ? 1 : 0,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Spacer(),
-            Container(width: 58, height: 58, decoration: BoxDecoration(color: AppTheme.accentDark, borderRadius: BorderRadius.circular(18)), child: const Icon(Icons.credit_card_rounded, color: Colors.white, size: 30)),
-            const SizedBox(height: 26),
-            const Text('GEMCARDS', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, letterSpacing: 1.2, color: AppTheme.ink)),
-            const SizedBox(height: 8),
-            const Text('Retail Payment Suite', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.accentDark)),
-            const SizedBox(height: 8),
-            const Text('by Gemini Software Solutions', style: TextStyle(color: AppTheme.muted)),
-            const SizedBox(height: 32),
-            const Text('Welcome to GEMCARDS', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 10),
-            const Text('Complete your onboarding to get started. Secure, simple and seamless digital onboarding.', style: TextStyle(color: AppTheme.muted, height: 1.5, fontSize: 16)),
-            const Spacer(),
-            SizedBox(width: double.infinity, height: 54, child: FilledButton.icon(onPressed: _start, icon: const Icon(Icons.arrow_forward_rounded), label: const Text('Begin onboarding'), style: FilledButton.styleFrom(backgroundColor: AppTheme.accentDark, foregroundColor: Colors.white))),
-            const SizedBox(height: 14),
-            const Center(child: Text('DEMO PROTOTYPE', style: TextStyle(fontSize: 11, letterSpacing: 1.1, color: AppTheme.muted, fontWeight: FontWeight.w700))),
-          ]),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(26, 24, 26, 22),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight - 46,
+              ),
+              child: IntrinsicHeight(
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 450),
+                  opacity: _visible ? 1 : 0,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Spacer(),
+                      Row(
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'GEMCARDS',
+                                style: Theme.of(context).textTheme.headlineSmall
+                                    ?.copyWith(
+                                      fontSize: 24,
+                                      letterSpacing: 1.4,
+                                    ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Retail Payment Suite',
+                                style: Theme.of(context).textTheme.labelMedium,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 42),
+                      Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surface,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.shield_outlined,
+                                  size: 18,
+                                  color: AppTheme.accentDark,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'A considered start to your application',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelLarge
+                                        ?.copyWith(color: AppTheme.accentDark),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 30),
+                            Text(
+                              'Customer\nonboarding',
+                              style: Theme.of(
+                                context,
+                              ).textTheme.displaySmall?.copyWith(height: 1.05),
+                            ),
+                            const SizedBox(height: 14),
+                            Text(
+                              'Complete your verification to continue with your card application.',
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodyLarge?.copyWith(height: 1.55),
+                            ),
+                            const SizedBox(height: 26),
+                            const Divider(height: 1),
+                            const SizedBox(height: 18),
+                            Wrap(
+                              spacing: 18,
+                              runSpacing: 10,
+                              alignment: WrapAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.schedule_rounded,
+                                      color: AppTheme.muted,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 9),
+                                    Text(
+                                      'About 2 min',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.labelLarge,
+                                    ),
+                                  ],
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    'DEMO FLOW',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(color: AppTheme.accentDark),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 58,
+                        child: FilledButton.icon(
+                          onPressed: _start,
+                          icon: const Icon(Icons.arrow_forward_rounded),
+                          label: const Text('Begin onboarding'),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Center(
+                        child: Text(
+                          'Demo only • please do not submit real identity documents.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

@@ -5,16 +5,130 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:camera/camera.dart';
 import 'package:gemcards_onboarding_prototype/main.dart';
+import 'package:gemcards_onboarding_prototype/screens/camera_capture_screen.dart';
+import 'package:gemcards_onboarding_prototype/screens/kyc_flow_screen.dart';
+import 'package:gemcards_onboarding_prototype/screens/liveness_screen.dart';
+import 'package:gemcards_onboarding_prototype/repositories/kyc_repository.dart';
 
 void main() {
-  testWidgets('shows the KYC identity journey', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const GemcardsApp());
+  testWidgets('shows the onboarding welcome screen without overflow', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-    expect(find.text('Welcome to GEMCARDS'), findsOneWidget);
+    await tester.pumpWidget(const GemcardsApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Customer\nonboarding'), findsOneWidget);
     expect(find.text('Begin onboarding'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
+
+  testWidgets('identity selection fits a compact phone screen', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MaterialApp(home: KycFlowScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Customer onboarding'), findsOneWidget);
+    expect(find.text('Passport'), findsOneWidget);
+    expect(find.text("Driver's License"), findsOneWidget);
+    expect(find.text('National ID'), findsOneWidget);
+    expect(find.text('Continue to verification'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('document, liveness, and address steps fit a compact phone', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(home: KycFlowScreen(repository: MockKycRepository())),
+    );
+    await tester.tap(find.text('Continue to verification'));
+    await tester.pumpAndSettle();
+    expect(find.text('Verify your document'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    final demoCapture = find.text('Camera unavailable? Use demo capture');
+    await tester.ensureVisible(demoCapture);
+    await tester.tap(demoCapture);
+    await tester.pump();
+    expect(find.text('Captured'), findsNWidgets(2));
+    await tester.tap(find.text('Continue'));
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.text('A quick face check'), findsOneWidget);
+
+    await tester.tap(find.text('Need an accessible alternative?'));
+    await tester.pump(const Duration(milliseconds: 300));
+    final assistedCheck = find.text('Continue with demo check');
+    await tester.ensureVisible(assistedCheck);
+    await tester.tap(assistedCheck);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Where can we reach you?'), findsOneWidget);
+    expect(find.text('Proof of address'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('document capture adapts to a compact phone screen', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: CameraCaptureScreen(
+          title: 'Capture front',
+          instruction: 'Fit the front of your ID inside the frame',
+          lensDirection: CameraLensDirection.back,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Capture front'), findsOneWidget);
+    expect(find.text('ALIGN YOUR DOCUMENT'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'liveness screen fits a compact phone and exposes an alternative',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(const MaterialApp(home: LivenessScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Face verification'), findsOneWidget);
+      expect(find.text('1 of 4'), findsOneWidget);
+      expect(find.text('Use accessible alternative'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }

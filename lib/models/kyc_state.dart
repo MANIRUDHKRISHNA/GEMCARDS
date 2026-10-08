@@ -1,4 +1,5 @@
 enum ProcessingStatus { draft, processing, verified, underReview, actionRequired, failed }
+enum KycJourneyStage { draft, identityComplete, documentFront, documentBack, documentVerified, livenessPending, livenessVerified, addressPending, addressVerified, review, processing, verified, underReview, actionRequired, failed }
 
 /// In-memory state for one demo journey. It never persists document images or
 /// real identity credentials; captures are held only for the active UI flow.
@@ -22,6 +23,7 @@ class KycState {
   bool termsAccepted = false;
   String? errorMessage;
   ProcessingStatus processingStatus = ProcessingStatus.draft;
+  KycJourneyStage journeyStage = KycJourneyStage.draft;
 
   bool get declarationsComplete => accuracyDeclared && pepDeclared && termsAccepted;
 
@@ -34,5 +36,6 @@ class KycState {
     selfieCaptured = false; livenessPassed = false; faceMatchScore = 0;
     accuracyDeclared = false; pepDeclared = false; termsAccepted = false;
     errorMessage = null; processingStatus = ProcessingStatus.draft;
+    journeyStage = KycJourneyStage.draft;
   }
 }

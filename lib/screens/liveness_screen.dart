@@ -20,11 +20,17 @@ class LivenessScreen extends StatefulWidget {
   State<LivenessScreen> createState() => _LivenessScreenState();
 }
 
-class _LivenessScreenState extends State<LivenessScreen> {
+class _LivenessScreenState extends State<LivenessScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _scanController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1900),
+  )..repeat(reverse: true);
   CameraController? _controller;
   Timer? _timer;
   int _promptIndex = 0;
   bool _checking = false;
+  bool _cameraUnavailable = false;
 
   final prompts = const [
     'Look straight at the camera',
@@ -64,7 +70,7 @@ class _LivenessScreenState extends State<LivenessScreen> {
         });
       });
     } catch (_) {
-      // The demo can still complete without a physical camera.
+      if (mounted) setState(() => _cameraUnavailable = true);
     }
   }
 
@@ -72,6 +78,7 @@ class _LivenessScreenState extends State<LivenessScreen> {
   void dispose() {
     _timer?.cancel();
     _controller?.dispose();
+    _scanController.dispose();
     super.dispose();
   }
 
@@ -90,22 +97,87 @@ class _LivenessScreenState extends State<LivenessScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: const Text('Liveness check'),
+        title: const Text('Face verification'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 18),
+            child: Center(
+              child: Text(
+                '${_promptIndex + 1} of ${prompts.length}',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Stack(
         fit: StackFit.expand,
         children: [
           if (controller?.value.isInitialized == true)
             CameraPreview(controller!)
+          else if (_cameraUnavailable)
+            Container(color: AppTheme.ink)
           else
             const Center(child: CircularProgressIndicator(color: Colors.white)),
           Center(
-            child: Container(
-              width: 235,
-              height: 310,
-              decoration: BoxDecoration(
-                border: Border.all(color: AppTheme.accent, width: 4),
-                borderRadius: BorderRadius.circular(120),
+            child: LayoutBuilder(
+              builder: (context, constraints) => Container(
+                width: (constraints.maxWidth * .62)
+                    .clamp(190.0, 260.0)
+                    .toDouble(),
+                height: (constraints.maxHeight * .48)
+                    .clamp(230.0, 340.0)
+                    .toDouble(),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: _checking ? AppTheme.success : AppTheme.accent,
+                    width: 2.5,
+                  ),
+                  borderRadius: BorderRadius.circular(160),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.accent.withValues(alpha: .35),
+                      blurRadius: 24,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(
+                      Icons.person_outline_rounded,
+                      color: Colors.white54,
+                      size: 72,
+                    ),
+                    AnimatedBuilder(
+                      animation: _scanController,
+                      builder: (context, child) => Positioned(
+                        top: 30 + 180 * _scanController.value,
+                        left: 22,
+                        right: 22,
+                        child: child!,
+                      ),
+                      child: Container(
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent,
+                          borderRadius: BorderRadius.circular(2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.accent.withValues(alpha: .7),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -116,24 +188,67 @@ class _LivenessScreenState extends State<LivenessScreen> {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: .55),
-                borderRadius: BorderRadius.circular(16),
+                color: AppTheme.ink.withValues(alpha: .88),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white.withValues(alpha: .12)),
               ),
               child: Column(
                 children: [
-                  const Text(
-                    'Live face verification',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
+                  const Row(
+                    children: [
+                      Icon(
+                        Icons.shield_outlined,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Follow the prompts on screen',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'DEMO',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: .8,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: (_promptIndex + 1) / prompts.length,
+                      minHeight: 3,
+                      backgroundColor: Colors.white24,
+                      color: AppTheme.accent,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 12),
+                  if (_cameraUnavailable) ...[
+                    const Text(
+                      'Camera unavailable • demo check only',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   Text(
                     prompts[_promptIndex],
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white70),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),
@@ -142,11 +257,41 @@ class _LivenessScreenState extends State<LivenessScreen> {
           Positioned(
             left: 24,
             right: 24,
-            bottom: 28,
+            bottom: 26,
             child: PrimaryButton(
-              label: _checking ? 'Checking...' : 'Complete demo check',
+              label: _checking ? 'Verifying…' : 'Complete demo check',
               icon: Icons.face_retouching_natural_rounded,
               onPressed: _checking ? null : _complete,
+            ),
+          ),
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 82,
+            child: Center(
+              child: TextButton(
+                onPressed: _checking ? null : _complete,
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(48, 48),
+                ),
+                child: const Text('Use accessible alternative'),
+              ),
+            ),
+          ),
+          const Positioned(
+            left: 24,
+            right: 24,
+            bottom: 5,
+            child: SafeArea(
+              top: false,
+              child: Center(
+                child: Text(
+                  'Simulated demo check • no real identity decision',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white60, fontSize: 11),
+                ),
+              ),
             ),
           ),
         ],
