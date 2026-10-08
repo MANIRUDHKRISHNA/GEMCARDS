@@ -29,3 +29,14 @@ def test_upload_rejects_invalid_type() -> None:
     session_id = create_session()
     response = client.post(f'/api/v1/kyc/{session_id}/address/upload', files={'file': ('unsafe.txt', b'x', 'text/plain')})
     assert response.status_code == 415
+
+
+def test_admin_demo_contract_and_simulation_rules() -> None:
+    assert client.get('/api/v1/admin/metrics').json()['total_customers'] == 12480
+    assert client.get('/api/v1/admin/customers', params={'query': 'Alex'}).json()[0]['id'] == 'CUS-DEMO-001'
+    assert client.post('/api/v1/admin/cards/CARD-001/freeze').json()['status'] == 'frozen'
+    response = client.post('/api/v1/admin/transactions/simulate', json={'card_id': 'CARD-001', 'merchant': 'Demo Store', 'amount': 100, 'country': 'India', 'transaction_type': 'purchase'})
+    assert response.json()['decision'] == 'DECLINED'
+    assert client.post('/api/v1/admin/cards/CARD-001/unfreeze').json()['status'] == 'active'
+    response = client.post('/api/v1/admin/transactions/simulate', json={'card_id': 'CARD-001', 'merchant': 'Foreign Demo', 'amount': 8000, 'country': 'Singapore', 'transaction_type': 'purchase'})
+    assert response.json()['decision'] == 'DECLINED'
