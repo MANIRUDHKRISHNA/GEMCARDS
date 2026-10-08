@@ -102,20 +102,52 @@ class GemcardsApiClient {
   Future<Map<String, dynamic>> adminMetrics() =>
       _getMap('/api/v1/admin/metrics');
 
-  Future<List<Map<String, dynamic>>> adminCustomers() =>
-      getList('/api/v1/admin/customers');
+  Future<List<Map<String, dynamic>>> adminCustomers({
+    String query = '',
+    String kycStatus = '',
+  }) => getList(
+    Uri(
+      path: '/api/v1/admin/customers',
+      queryParameters: {
+        if (query.isNotEmpty) 'query': query,
+        if (kycStatus.isNotEmpty) 'kyc_status': kycStatus,
+      },
+    ).toString(),
+  );
+
+  Future<Map<String, dynamic>> adminCustomer(String id) =>
+      _getMap('/api/v1/admin/customers/${Uri.encodeComponent(id)}');
 
   Future<List<Map<String, dynamic>>> adminCards() =>
       getList('/api/v1/admin/cards');
 
+  Future<Map<String, dynamic>> adminCard(String id) =>
+      _getMap('/api/v1/admin/cards/${Uri.encodeComponent(id)}');
+
+  Future<Map<String, dynamic>> adminUpdateCardLimit(String id, int limit) =>
+      _postMap('/api/v1/admin/cards/${Uri.encodeComponent(id)}/limit', {
+        'limit': limit,
+      });
+
+  Future<Map<String, dynamic>> adminReplaceCard(String id) =>
+      _postMap('/api/v1/admin/cards/${Uri.encodeComponent(id)}/replace');
+
   Future<List<Map<String, dynamic>>> adminTransactions() =>
       getList('/api/v1/admin/transactions');
 
-  Future<List<Map<String, dynamic>>> adminFraud() =>
-      getList('/api/v1/admin/fraud');
+  Future<List<Map<String, dynamic>>> adminFraud() => fraud();
 
-  Future<List<Map<String, dynamic>>> adminDisputes() =>
-      getList('/api/v1/admin/disputes');
+  Future<Map<String, dynamic>> adminResolveFraud(String id) =>
+      _postMap('/api/v1/fraud/${Uri.encodeComponent(id)}/resolve');
+
+  Future<List<Map<String, dynamic>>> adminDisputes() => disputes();
+
+  Future<Map<String, dynamic>> adminUpdateDisputeStatus(
+    String id,
+    String status,
+  ) => _postMap('/api/v1/disputes/${Uri.encodeComponent(id)}/status', {
+    'status': status,
+  });
 
   Future<Map<String, dynamic>> adminFreezeCard(
     String id, {
@@ -129,12 +161,13 @@ class GemcardsApiClient {
     required String merchant,
     required double amount,
     required String country,
+    required String channel,
   }) => simulateAuthorization(
     cardId: cardId,
     merchant: merchant,
     amount: amount,
     country: country,
-    channel: 'ONLINE',
+    channel: channel,
   );
 
   Future<Map<String, dynamic>> _getMap(String path) async {

@@ -4,6 +4,8 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.domain import store
+
 router = APIRouter(prefix='/api/v1/admin', tags=['admin'])
 
 CUSTOMERS = [
@@ -41,7 +43,7 @@ def find(items: list[dict], item_id: str) -> dict:
 
 @router.get('/metrics')
 def metrics() -> dict:
-    return {'total_customers': 12480, 'active_cards': 18340, 'transactions_today': 918, 'transaction_volume': 1284500, 'pending_kyc': 24, 'fraud_alerts': len([item for item in FRAUD if item['status'] == 'open']), 'open_disputes': len([item for item in DISPUTES if item['status'] == 'open']), 'cards_issued_today': 42, 'volume_series': [64, 82, 70, 94, 108, 121, 116], 'issuance_series': [18, 22, 19, 34, 28, 42, 39]}
+    return {'total_customers': 12480, 'active_cards': 18340, 'transactions_today': 918, 'transaction_volume': 1284500, 'pending_kyc': 24, 'fraud_alerts': len([item for item in store.fraud_alerts.values() if item.status == 'open']), 'open_disputes': len([item for item in store.disputes.values() if item.status == 'open']), 'cards_issued_today': 42, 'volume_series': [64, 82, 70, 94, 108, 121, 116], 'issuance_series': [18, 22, 19, 34, 28, 42, 39]}
 
 @router.get('/customers')
 def customers(query: str = '', kyc_status: str = '') -> list[dict]:
@@ -58,13 +60,33 @@ def cards(status: str = '') -> list[dict]: return [card for card in CARDS if not
 @router.get('/cards/{card_id}')
 def card_detail(card_id: str) -> dict: return find(CARDS, card_id)
 @router.post('/cards/{card_id}/freeze')
-def freeze(card_id: str) -> dict: card = find(CARDS, card_id); card['status'] = 'frozen'; return card
+def freeze(card_id: str) -> dict:
+    card = find(CARDS, card_id)
+    card['status'] = 'frozen'
+    if card_id in store.cards:
+        store.cards[card_id].status = 'frozen'
+    return card
 @router.post('/cards/{card_id}/unfreeze')
-def unfreeze(card_id: str) -> dict: card = find(CARDS, card_id); card['status'] = 'active'; return card
+def unfreeze(card_id: str) -> dict:
+    card = find(CARDS, card_id)
+    card['status'] = 'active'
+    if card_id in store.cards:
+        store.cards[card_id].status = 'active'
+    return card
 @router.post('/cards/{card_id}/limit')
-def update_limit(card_id: str, payload: LimitUpdate) -> dict: card = find(CARDS, card_id); card['limit'] = payload.limit; return card
+def update_limit(card_id: str, payload: LimitUpdate) -> dict:
+    card = find(CARDS, card_id)
+    card['limit'] = payload.limit
+    if card_id in store.cards:
+        store.cards[card_id].daily_limit = payload.limit
+    return card
 @router.post('/cards/{card_id}/replace')
-def replace(card_id: str) -> dict: card = find(CARDS, card_id); card['status'] = 'replaced'; return {'card': card, 'message': 'Demo replacement requested'}
+def replace(card_id: str) -> dict:
+    card = find(CARDS, card_id)
+    card['status'] = 'replaced'
+    if card_id in store.cards:
+        store.cards[card_id].status = 'closed'
+    return {'card': card, 'message': 'Demo replacement requested'}
 
 @router.get('/transactions')
 def transactions(status: str = '') -> list[dict]: return [transaction for transaction in TRANSACTIONS if not status or transaction['status'] == status]

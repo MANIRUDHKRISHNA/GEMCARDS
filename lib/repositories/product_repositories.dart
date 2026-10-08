@@ -101,150 +101,78 @@ class TransactionRepository {
 }
 
 class AdminRepository {
-  AdminRepository(this.api, this.offline);
+  AdminRepository(this.api);
   final GemcardsApiClient api;
-  final ProductRepository offline;
   bool _offline = false;
 
   bool get isOffline => _offline;
 
-  Future<T> _request<T>(
-    Future<T> Function() request,
-    Future<T> Function() fallback,
-  ) async {
+  Future<T> _request<T>(Future<T> Function() request) async {
     try {
       final result = await request();
       _offline = false;
       return result;
-    } on GemcardsApiException catch (error) {
-      if (!error.allowOfflineFallback) rethrow;
+    } on GemcardsApiException {
       _offline = true;
-      return fallback();
+      rethrow;
     }
   }
 
-  Future<Map<String, dynamic>> getMetrics() => _request(
-    api.adminMetrics,
-    () async => const {
-      'total_customers': 12480,
-      'active_cards': 18340,
-      'transactions_today': 918,
-      'transaction_volume': 1284500,
-      'pending_kyc': 24,
-      'fraud_alerts': 1,
-      'open_disputes': 1,
-      'cards_issued_today': 42,
-    },
-  );
+  Future<Map<String, dynamic>> getMetrics() => _request(api.adminMetrics);
 
-  Future<List<Map<String, dynamic>>> getCustomers() => _request(
-    api.adminCustomers,
-    () async => (await offline.customers())
-        .map(
-          (customer) => {
-            'id': customer.id,
-            'name': customer.name,
-            'email': customer.email,
-            'kyc_status': customer.kycStatus,
-            'cards': 0,
-            'transactions': 0,
-            'risk': 'low',
-          },
-        )
-        .toList(),
-  );
+  Future<List<Map<String, dynamic>>> getCustomers({
+    String query = '',
+    String kycStatus = '',
+  }) => _request(() => api.adminCustomers(query: query, kycStatus: kycStatus));
 
-  Future<List<Map<String, dynamic>>> getCards() => _request(
-    api.adminCards,
-    () async => (await offline.loadCards())
-        .map(
-          (card) => {
-            'id': card.id,
-            'masked_number': '•••• ${card.lastFour}',
-            'customer': 'Alex Morgan',
-            'product': card.type,
-            'type': card.virtual ? 'virtual' : 'physical',
-            'status': card.status.name,
-            'limit': card.dailyLimit,
-            'expiry': card.expiry,
-          },
-        )
-        .toList(),
-  );
+  Future<Map<String, dynamic>> getCustomer(String id) =>
+      _request(() => api.adminCustomer(id));
 
-  Future<List<Map<String, dynamic>>> getTransactions() => _request(
-    api.adminTransactions,
-    () async => (await offline.loadTransactions())
-        .map(
-          (transaction) => {
-            'id': transaction.id,
-            'merchant': transaction.merchant,
-            'amount': transaction.amount,
-            'timestamp': transaction.time.toIso8601String(),
-            'status': transaction.status.name,
-          },
-        )
-        .toList(),
-  );
+  Future<List<Map<String, dynamic>>> getCards() => _request(api.adminCards);
 
-  Future<List<Map<String, dynamic>>> getFraud() => _request(
-    api.adminFraud,
-    () async => (await offline.loadFraudAlerts())
-        .map(
-          (alert) => {
-            'id': alert.id,
-            'severity': alert.severity,
-            'customer': alert.customer,
-            'amount': alert.amount,
-            'location': alert.location,
-            'reason': alert.reason,
-            'status': alert.status,
-          },
-        )
-        .toList(),
-  );
+  Future<Map<String, dynamic>> getCard(String id) =>
+      _request(() => api.adminCard(id));
 
-  Future<List<Map<String, dynamic>>> getDisputes() => _request(
-    api.adminDisputes,
-    () async => (await offline.disputes())
-        .map(
-          (dispute) => {
-            'id': dispute.id,
-            'transaction_id': dispute.transactionId,
-            'reason': dispute.reason,
-            'status': dispute.status,
-          },
-        )
-        .toList(),
-  );
+  Future<Map<String, dynamic>> updateCardLimit(String id, int limit) =>
+      _request(() => api.adminUpdateCardLimit(id, limit));
+
+  Future<Map<String, dynamic>> replaceCard(String id) =>
+      _request(() => api.adminReplaceCard(id));
+
+  Future<List<Map<String, dynamic>>> getTransactions() =>
+      _request(api.adminTransactions);
+
+  Future<List<Map<String, dynamic>>> getFraud() => _request(api.adminFraud);
+
+  Future<Map<String, dynamic>> resolveFraud(String id) =>
+      _request(() => api.adminResolveFraud(id));
+
+  Future<List<Map<String, dynamic>>> getDisputes() =>
+      _request(api.adminDisputes);
+
+  Future<Map<String, dynamic>> updateDisputeStatus(String id, String status) =>
+      _request(() => api.adminUpdateDisputeStatus(id, status));
 
   Future<Map<String, dynamic>> simulateAuthorization({
     required String cardId,
     required String merchant,
     required double amount,
     required String country,
+    required String channel,
   }) => _request(
     () => api.adminSimulateAuthorization(
       cardId: cardId,
       merchant: merchant,
       amount: amount,
       country: country,
+      channel: channel,
     ),
-    () async => {
-      'decision': 'APPROVED',
-      'authorization_id': 'AUTH-OFFLINE-DEMO',
-      'explanation': 'Offline demo only; no payment was processed.',
-    },
   );
 
   Future<Map<String, dynamic>> setCardFrozen(
     String cardId, {
     required bool frozen,
-  }) => _request(() => api.adminFreezeCard(cardId, frozen: frozen), () async {
-    final current = await offline.loadCard(cardId);
-    final updated = await offline.setCardFrozen(current, frozen);
-    return {'id': updated.id, 'status': updated.status.name};
-  });
+  }) => _request(() => api.adminFreezeCard(cardId, frozen: frozen));
 }
 
 class ApiProductRepository implements ProductRepository {
@@ -254,7 +182,7 @@ class ApiProductRepository implements ProductRepository {
     customersApi = CustomerRepository(this.api);
     cardsApi = CardRepository(this.api);
     transactionsApi = TransactionRepository(this.api);
-    adminApi = AdminRepository(this.api, this.offline);
+    adminApi = AdminRepository(this.api);
   }
 
   final GemcardsApiClient api;

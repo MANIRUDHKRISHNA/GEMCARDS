@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.domain import store
+from app.api.routes import admin as admin_routes
 from app.main import app
 
 client = TestClient(app)
@@ -219,3 +220,47 @@ def test_kyc_updates_the_customer_application_lifecycle() -> None:
     finally:
         customer.kyc_status = original_kyc_status
         customer.application_status = original_application_status
+
+
+def test_admin_card_limit_and_dispute_status_update_shared_domain_state() -> None:
+    card = store.get_card("CARD-001")
+    original_limit = card.daily_limit
+    admin_card = next(item for item in admin_routes.CARDS if item["id"] == "CARD-001")
+    original_admin_limit = admin_card["limit"]
+    dispute = store.disputes["DSP-01"]
+    original_status = dispute.status
+
+    try:
+        changed_limit = client.post(
+            "/api/v1/admin/cards/CARD-001/limit",
+            json={"limit": 60000},
+        )
+        authorization = client.post(
+            "/api/v1/transactions/simulate",
+            json={
+                "card_id": "CARD-001",
+                "merchant": "Ops limit verification",
+                "amount": 60001,
+                "country": "IN",
+                "channel": "ONLINE",
+            },
+        )
+        changed_dispute = client.post(
+            "/api/v1/disputes/DSP-01/status",
+            json={"status": "investigating"},
+        )
+        listed_disputes = client.get("/api/v1/disputes")
+
+        assert changed_limit.status_code == 200
+        assert changed_limit.json()["limit"] == 60000
+        assert card.daily_limit == 60000
+        assert authorization.json()["decision"] == "DECLINED"
+        assert changed_dispute.status_code == 200
+        assert changed_dispute.json()["status"] == "investigating"
+        assert next(
+            item for item in listed_disputes.json() if item["id"] == "DSP-01"
+        )["status"] == "investigating"
+    finally:
+        card.daily_limit = original_limit
+        admin_card["limit"] = original_admin_limit
+        dispute.status = original_status

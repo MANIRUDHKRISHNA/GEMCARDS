@@ -1,4 +1,7 @@
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from app.domain import store
 from app.schemas.domain import Dispute, DisputeCreate
@@ -7,9 +10,25 @@ router = APIRouter(prefix="/api/v1/disputes", tags=["disputes"])
 _dispute_sequence = 1
 
 
+class DisputeStatusUpdate(BaseModel):
+    status: Literal["open", "investigating", "resolved"]
+
+
 @router.get("", response_model=list[Dispute])
 def list_disputes() -> list[Dispute]:
     return list(store.disputes.values())
+
+
+@router.post("/{dispute_id}/status", response_model=Dispute)
+def update_dispute_status(
+    dispute_id: str,
+    payload: DisputeStatusUpdate,
+) -> Dispute:
+    dispute = store.disputes.get(dispute_id)
+    if dispute is None:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    dispute.status = payload.status
+    return dispute
 
 
 @router.post("", response_model=Dispute, status_code=201)

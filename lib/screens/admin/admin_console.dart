@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../repositories/product_repositories.dart';
 import '../../services/api/gemcards_api_client.dart';
-import '../../services/demo_product_service.dart';
 
 class AdminConsoleScreen extends StatefulWidget {
   const AdminConsoleScreen({super.key, this.repository});
@@ -15,10 +14,11 @@ class AdminConsoleScreen extends StatefulWidget {
 class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   int tab = 0;
   late final AdminRepository repository =
-      widget.repository ??
-      AdminRepository(GemcardsApiClient(), DemoProductRepository());
+      widget.repository ?? AdminRepository(GemcardsApiClient());
   late Future<_AdminData> _data = _loadData();
   _AdminData? _loaded;
+  String _customerQuery = '';
+  String _kycFilter = 'All';
   final labels = const [
     'Overview',
     'Customers',
@@ -76,7 +76,9 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
               children: [
                 const Text('Operations data unavailable'),
                 TextButton.icon(
-                  onPressed: () => setState(() => _data = _loadData()),
+                  onPressed: () => setState(() {
+                    _data = _loadData();
+                  }),
                   icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Try again'),
                 ),
@@ -184,7 +186,10 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
               },
             ),
             const SizedBox(height: 24),
-            const _Chart(),
+            _Chart(
+              volumeSeries: _series('volume_series'),
+              issuanceSeries: _series('issuance_series'),
+            ),
             const SizedBox(height: 16),
             if (data.fraud.isNotEmpty)
               _surface(
@@ -208,41 +213,19 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       );
     }
     if (tab == 1) {
-      return _queue(
-        'Customers',
-        'Name · ID · KYC · cards · transactions · risk',
-        data.customers
-            .map(
-              (item) =>
-                  '${item['name']} · ${item['id']} · ${item['kyc_status']} · '
-                  '${item['cards'] ?? 0} cards · ${item['transactions'] ?? 0} transactions · '
-                  '${item['risk'] ?? 'demo'} risk',
-            )
-            .toList(),
-      );
+      return _customers(data.customers);
     }
     if (tab == 2) {
       return _cards(data.cards);
     }
     if (tab == 3) {
-      return _queue(
-        'Transaction operations',
-        'Merchant · customer · card · timestamp · status · risk',
-        data.transactions
-            .map(
-              (item) =>
-                  '${item['merchant']} · ${item['customer'] ?? item['card_id'] ?? ''} · '
-                  '${item['timestamp'] ?? item['occurred_at'] ?? ''} · '
-                  '₹${item['amount'] ?? 0} · ${item['status'] ?? item['decision']}',
-            )
-            .toList(),
-      );
+      return _transactions(data.transactions);
     }
     if (tab == 4) {
       return _page(
         'Authorization simulator',
         'Deterministic card-status, limit and international rules',
-        _Simulator(repository: repository),
+        _Simulator(repository: repository, cards: data.cards),
       );
     }
     if (tab == 5) {
@@ -251,12 +234,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     if (tab == 6) {
       return _disputes(data.disputes);
     }
-    return _queue('Reports', 'Concise synthetic portfolio reporting', const [
-      'Card issuance · 42 cards issued today',
-      'Transaction volume · ₹12.8L processed today',
-      'Customer growth · +128 customers this week',
-      'Fraud summary · 1 open high-risk alert',
-    ]);
+    return _reports(data.metrics);
   }
 
   Widget _page(String title, String subtitle, Widget child) => Column(
@@ -274,42 +252,402 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       Expanded(child: child),
     ],
   );
-  Widget _queue(String title, String subtitle, List<String> rows) => _page(
-    title,
-    subtitle,
-    ListView(
-      children: [
-        TextField(
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Search or filter',
-          ),
-        ),
-        const SizedBox(height: 14),
-        ...rows.map(
-          (x) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _surface(
-              ListTile(
-                leading: const Icon(Icons.account_circle_outlined),
-                title: Text(
-                  x,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
   String _metric(String name) => (_loaded!.metrics[name] ?? 0).toString();
 
   String _volume() {
     final volume = _loaded!.metrics['transaction_volume'];
     if (volume is num) return '₹${(volume / 100000).toStringAsFixed(1)}L';
     return '₹0';
+  }
+
+  List<double> _series(String name) =>
+      (_loaded!.metrics[name] as List<dynamic>? ?? const [])
+          .whereType<num>()
+          .map((value) => value.toDouble())
+          .toList();
+
+  Widget _customers(List<Map<String, dynamic>> customers) {
+    final visible = customers.where((customer) {
+      final query = _customerQuery.trim().toLowerCase();
+      final matchesQuery =
+          query.isEmpty ||
+          ['name', 'id', 'email'].any(
+            (field) =>
+                customer[field]?.toString().toLowerCase().contains(query) ??
+                false,
+          );
+      final matchesStatus =
+          _kycFilter == 'All' || customer['kyc_status'] == _kycFilter;
+      return matchesQuery && matchesStatus;
+    }).toList();
+
+    return _page(
+      'Customers',
+      'Search and review customer onboarding and risk',
+      ListView(
+        children: [
+          TextField(
+            onChanged: (value) => setState(() => _customerQuery = value),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Search name, customer ID, or email',
+            ),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _kycFilter,
+            decoration: const InputDecoration(labelText: 'KYC status'),
+            items: const ['All', 'verified', 'under_review', 'pending']
+                .map(
+                  (value) => DropdownMenuItem(
+                    value: value,
+                    child: Text(value == 'All' ? value : _titleCase(value)),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) setState(() => _kycFilter = value);
+            },
+          ),
+          const SizedBox(height: 14),
+          if (visible.isEmpty)
+            const ListTile(title: Text('No matching customers.'))
+          else
+            for (final customer in visible)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _surface(
+                  ListTile(
+                    onTap: () =>
+                        _showCustomerDetail(customer['id']?.toString() ?? ''),
+                    leading: const Icon(Icons.account_circle_outlined),
+                    title: Text(customer['name']?.toString() ?? 'Customer'),
+                    subtitle: Text(
+                      '${customer['id'] ?? ''} · ${customer['kyc_status'] ?? 'unknown'} · '
+                      '${customer['cards'] ?? 0} cards · ${customer['transactions'] ?? 0} transactions · '
+                      '${customer['risk'] ?? 'unknown'} risk',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCustomerDetail(String customerId) async {
+    if (customerId.isEmpty) return;
+    var detailFuture = repository.getCustomer(customerId);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Customer details'),
+          content: SizedBox(
+            width: 520,
+            child: FutureBuilder<Map<String, dynamic>>(
+              future: detailFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    height: 120,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Customer details unavailable.'),
+                      TextButton(
+                        onPressed: () => setDialogState(() {
+                          detailFuture = repository.getCustomer(customerId);
+                        }),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  );
+                }
+                final customer = snapshot.requireData;
+                return SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${customer['email'] ?? ''}'),
+                      Text('KYC: ${customer['kyc_status'] ?? 'unknown'}'),
+                      Text('Risk: ${customer['risk'] ?? 'unknown'}'),
+                      const SizedBox(height: 12),
+                      _detailSection('Cards', customer['cards_detail']),
+                      _detailSection(
+                        'Transactions',
+                        customer['transactions_detail'],
+                      ),
+                      _detailSection('Disputes', customer['disputes']),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCardDetail(String cardId) async {
+    var detailFuture = repository.getCard(cardId);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Card details'),
+          content: SizedBox(
+            width: 420,
+            child: FutureBuilder<Map<String, dynamic>>(
+              future: detailFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    height: 100,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Card details unavailable.'),
+                      TextButton(
+                        onPressed: () => setDialogState(() {
+                          detailFuture = repository.getCard(cardId);
+                        }),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  );
+                }
+                final card = snapshot.requireData;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${card['product'] ?? 'GEM card'} · ${card['id']}'),
+                    Text(
+                      'Customer: ${card['customer'] ?? card['customer_id']}',
+                    ),
+                    Text('Status: ${card['status']}'),
+                    Text(
+                      'Daily limit: ₹${card['limit'] ?? card['daily_limit'] ?? 0}',
+                    ),
+                    Text('Type: ${card['type'] ?? 'unknown'}'),
+                    Text('Expiry: ${card['expiry'] ?? '—'}'),
+                  ],
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailSection(String title, Object? records) {
+    final items = records is List<dynamic>
+        ? records.whereType<Map<String, dynamic>>().toList()
+        : const <Map<String, dynamic>>[];
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          if (items.isEmpty)
+            const Padding(padding: EdgeInsets.only(top: 6), child: Text('None'))
+          else
+            for (final item in items)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  item['merchant']?.toString() ??
+                      item['product']?.toString() ??
+                      item['reason']?.toString() ??
+                      item['id']?.toString() ??
+                      title,
+                ),
+                subtitle: Text(
+                  '${item['status'] ?? item['timestamp'] ?? ''} · '
+                  '${item['amount'] == null ? '' : '₹${item['amount']}'}',
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _transactions(List<Map<String, dynamic>> transactions) => _page(
+    'Transaction operations',
+    'Customer · merchant · card · amount · decision · risk · timestamp',
+    transactions.isEmpty
+        ? const Center(child: Text('No transactions in the demo portfolio.'))
+        : ListView(
+            children: [
+              for (final item in transactions)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _surface(
+                    ListTile(
+                      leading: const Icon(Icons.receipt_long_outlined),
+                      title: Text(
+                        '${item['merchant'] ?? 'Merchant'} · ₹${item['amount'] ?? 0}',
+                      ),
+                      subtitle: Text(
+                        '${item['customer'] ?? 'Customer'} · '
+                        '${item['card'] ?? item['card_id'] ?? 'Card'} · '
+                        '${_titleCase(item['status']?.toString() ?? item['decision']?.toString() ?? 'unknown')} · '
+                        'Risk ${item['risk_score'] ?? '—'} · '
+                        '${item['timestamp'] ?? item['occurred_at'] ?? ''}',
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+  );
+
+  Widget _reports(Map<String, dynamic> metrics) => _page(
+    'Reports',
+    'Portfolio summary sourced from operations metrics',
+    ListView(
+      children: [
+        for (final metric in [
+          ('total_customers', 'Total customers'),
+          ('active_cards', 'Active cards'),
+          ('transactions_today', 'Transactions today'),
+          ('transaction_volume', 'Transaction volume (INR)'),
+          ('pending_kyc', 'Pending KYC'),
+          ('fraud_alerts', 'Open fraud alerts'),
+          ('open_disputes', 'Open disputes'),
+          ('cards_issued_today', 'Cards issued today'),
+        ])
+          _surface(
+            ListTile(
+              title: Text(metric.$2),
+              trailing: Text('${metrics[metric.$1] ?? '—'}'),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  void _reload() {
+    setState(() {
+      _data = _loadData();
+    });
+  }
+
+  Future<void> _changeCardLimit(String cardId, Object? currentLimit) async {
+    var value = currentLimit?.toString() ?? '';
+    final entered = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Change card limit'),
+        content: TextFormField(
+          initialValue: value,
+          keyboardType: TextInputType.number,
+          onChanged: (next) => value = next,
+          decoration: const InputDecoration(
+            labelText: 'Daily limit (INR)',
+            prefixText: '₹ ',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, value),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (entered == null) return;
+    final limit = int.tryParse(entered.trim());
+    if (limit == null || limit < 1000 || limit > 250000) {
+      _showMessage('Enter a limit between ₹1,000 and ₹250,000.');
+      return;
+    }
+    try {
+      await repository.updateCardLimit(cardId, limit);
+      if (mounted) _reload();
+    } on GemcardsApiException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  Future<void> _replaceCard(String cardId) async {
+    try {
+      final response = await repository.replaceCard(cardId);
+      if (mounted) {
+        _showMessage(
+          response['message']?.toString() ?? 'Replacement simulated.',
+        );
+        _reload();
+      }
+    } on GemcardsApiException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  Future<void> _setCardFrozen(String cardId, {required bool frozen}) async {
+    try {
+      await repository.setCardFrozen(cardId, frozen: frozen);
+      if (mounted) _reload();
+    } on GemcardsApiException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  Future<void> _resolveFraud(String alertId) async {
+    try {
+      await repository.resolveFraud(alertId);
+      if (mounted) _reload();
+    } on GemcardsApiException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  Future<void> _updateDispute(String disputeId, String status) async {
+    try {
+      await repository.updateDisputeStatus(disputeId, status);
+      if (mounted) _reload();
+    } on GemcardsApiException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  void _showMessage(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   Widget _cards(List<Map<String, dynamic>> cards) => _page(
@@ -321,12 +659,14 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
           const ListTile(title: Text('No cards in the demo portfolio.'))
         else
           ...cards.map((card) {
-            final frozen = card['status'] == 'frozen';
+            final status = card['status']?.toString() ?? 'unknown';
+            final frozen = status == 'frozen';
             final cardId = card['id']?.toString() ?? '';
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: _surface(
                 ListTile(
+                  onTap: cardId.isEmpty ? null : () => _showCardDetail(cardId),
                   leading: const Icon(Icons.credit_card_rounded),
                   title: Text(
                     '${card['masked_number'] ?? ''} · ${card['product'] ?? 'GEM card'}',
@@ -336,27 +676,42 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                     '${card['network'] ?? ''} · ${card['status']} · '
                     '₹${card['limit'] ?? card['daily_limit'] ?? 0} limit',
                   ),
-                  trailing: FilledButton(
-                    onPressed: cardId.isEmpty
-                        ? null
-                        : () async {
-                            try {
-                              await repository.setCardFrozen(
-                                cardId,
-                                frozen: !frozen,
-                              );
-                              if (mounted) {
-                                setState(() => _data = _loadData());
-                              }
-                            } on GemcardsApiException catch (error) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(error.message)),
-                                );
-                              }
-                            }
-                          },
-                    child: Text(frozen ? 'Unfreeze' : 'Freeze'),
+                  trailing: PopupMenuButton<String>(
+                    tooltip: 'Card operations',
+                    onSelected: (action) {
+                      if (action == 'freeze') {
+                        _setCardFrozen(cardId, frozen: true);
+                      } else if (action == 'unfreeze') {
+                        _setCardFrozen(cardId, frozen: false);
+                      } else if (action == 'limit') {
+                        _changeCardLimit(
+                          cardId,
+                          card['limit'] ?? card['daily_limit'],
+                        );
+                      } else if (action == 'replace') {
+                        _replaceCard(cardId);
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      if (!frozen)
+                        const PopupMenuItem(
+                          value: 'freeze',
+                          child: Text('Freeze card'),
+                        ),
+                      if (frozen)
+                        const PopupMenuItem(
+                          value: 'unfreeze',
+                          child: Text('Unfreeze card'),
+                        ),
+                      const PopupMenuItem(
+                        value: 'limit',
+                        child: Text('Change limit'),
+                      ),
+                      const PopupMenuItem(
+                        value: 'replace',
+                        child: Text('Simulate replacement'),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -388,7 +743,19 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                         '₹${alert['amount'] ?? 0} · ${alert['severity'] ?? ''}',
                       ),
                       const SizedBox(height: 12),
-                      Text('Status: ${alert['status'] ?? 'open'}'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('Status: ${alert['status'] ?? 'open'}'),
+                          ),
+                          if (alert['status'] == 'open')
+                            TextButton(
+                              onPressed: () =>
+                                  _resolveFraud(alert['id']?.toString() ?? ''),
+                              child: const Text('Resolve alert'),
+                            ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -411,6 +778,32 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                     subtitle: Text(
                       '${dispute['transaction_id'] ?? ''} · ${dispute['status'] ?? 'open'}',
                     ),
+                    trailing: DropdownButton<String>(
+                      value:
+                          const [
+                            'open',
+                            'investigating',
+                            'resolved',
+                          ].contains(dispute['status'])
+                          ? dispute['status'] as String
+                          : 'open',
+                      underline: const SizedBox.shrink(),
+                      items: const ['open', 'investigating', 'resolved']
+                          .map(
+                            (status) => DropdownMenuItem(
+                              value: status,
+                              child: Text(_titleCase(status)),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (status) {
+                        if (status != null &&
+                            status != dispute['status'] &&
+                            dispute['id'] != null) {
+                          _updateDispute(dispute['id'].toString(), status);
+                        }
+                      },
+                    ),
                   ),
                 ),
             ],
@@ -423,7 +816,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
       border: Border.all(color: AppTheme.border),
     ),
-    child: child,
+    child: Material(color: AppTheme.surface, child: child),
   );
   IconData _icon(String x) => x == 'Overview'
       ? Icons.grid_view
@@ -443,15 +836,19 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
 }
 
 class _Simulator extends StatefulWidget {
-  const _Simulator({required this.repository});
+  const _Simulator({required this.repository, required this.cards});
   final AdminRepository repository;
+  final List<Map<String, dynamic>> cards;
   @override
   State<_Simulator> createState() => _SimulatorState();
 }
 
 class _SimulatorState extends State<_Simulator> {
   final amount = TextEditingController(text: '1200');
+  final merchant = TextEditingController(text: 'GEM Demo Merchant');
   String country = 'India';
+  String channel = 'ONLINE';
+  String cardId = 'CARD-001';
   bool _busy = false;
   Map<String, dynamic>? _result;
   String? inputError;
@@ -459,12 +856,43 @@ class _SimulatorState extends State<_Simulator> {
   @override
   void dispose() {
     amount.dispose();
+    merchant.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => ListView(
     children: [
+      TextField(
+        controller: merchant,
+        decoration: const InputDecoration(labelText: 'Merchant'),
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        isExpanded: true,
+        initialValue: widget.cards.any((card) => card['id'] == cardId)
+            ? cardId
+            : widget.cards.isEmpty
+            ? null
+            : widget.cards.first['id']?.toString(),
+        decoration: const InputDecoration(labelText: 'Card'),
+        items: widget.cards
+            .map(
+              (card) => DropdownMenuItem(
+                value: card['id']?.toString() ?? '',
+                child: Text(
+                  '${card['id']} · ${card['status']} · ₹${card['limit'] ?? card['daily_limit'] ?? 0}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            )
+            .toList(),
+        onChanged: (value) {
+          if (value != null) setState(() => cardId = value);
+        },
+      ),
+      const SizedBox(height: 12),
       TextField(
         controller: amount,
         keyboardType: TextInputType.number,
@@ -493,6 +921,26 @@ class _SimulatorState extends State<_Simulator> {
           }
         },
       ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<String>(
+        initialValue: channel,
+        decoration: const InputDecoration(labelText: 'Channel'),
+        items: const ['ONLINE', 'POS', 'ATM']
+            .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+            .toList(),
+        onChanged: (value) {
+          if (value != null) setState(() => channel = value);
+        },
+      ),
+      const SizedBox(height: 10),
+      Wrap(
+        spacing: 8,
+        children: [
+          _scenario('A · ₹2,000 India', 2000, 'India'),
+          _scenario('B · ₹80,000', 80000, country),
+          _scenario('C · ₹9,800 Singapore', 9800, 'Singapore'),
+        ],
+      ),
       const SizedBox(height: 14),
       FilledButton.icon(
         onPressed: _busy
@@ -512,10 +960,11 @@ class _SimulatorState extends State<_Simulator> {
                 });
                 try {
                   final result = await widget.repository.simulateAuthorization(
-                    cardId: 'CARD-001',
-                    merchant: 'GEM Demo Merchant',
+                    cardId: cardId,
+                    merchant: merchant.text.trim(),
                     amount: parsedAmount,
                     country: country,
+                    channel: channel,
                   );
                   if (mounted) setState(() => _result = result);
                 } on GemcardsApiException catch (error) {
@@ -545,13 +994,16 @@ class _SimulatorState extends State<_Simulator> {
                     _result!['authorization_id']?.toString() ?? 'Offline demo',
                   ),
                   const Divider(),
-                  Text(
-                    _result!['explanation']?.toString() ??
-                        'No funds were moved.',
-                  ),
+                  if ((_result!['reasons'] as List<dynamic>? ?? const [])
+                      .isNotEmpty)
+                    for (final reason in _result!['reasons'] as List<dynamic>)
+                      Text('Reason: $reason'),
+                  if ((_result!['reasons'] as List<dynamic>? ?? const [])
+                      .isEmpty)
+                    const Text('No funds were moved.'),
                   for (final rule
-                      in (_result!['rules'] as List<dynamic>? ??
-                          _result!['rule_results'] as List<dynamic>? ??
+                      in (_result!['rule_results'] as List<dynamic>? ??
+                          _result!['rules'] as List<dynamic>? ??
                           const []))
                     if (rule is Map<String, dynamic>)
                       Text(
@@ -566,6 +1018,15 @@ class _SimulatorState extends State<_Simulator> {
         ),
     ],
   );
+
+  Widget _scenario(String label, double amountValue, String countryValue) =>
+      ActionChip(
+        label: Text(label),
+        onPressed: () => setState(() {
+          amount.text = amountValue.toStringAsFixed(0);
+          country = countryValue;
+        }),
+      );
 }
 
 class _AdminData {
@@ -612,7 +1073,10 @@ class _Kpi extends StatelessWidget {
 }
 
 class _Chart extends StatelessWidget {
-  const _Chart();
+  const _Chart({required this.volumeSeries, required this.issuanceSeries});
+  final List<double> volumeSeries;
+  final List<double> issuanceSeries;
+
   @override
   Widget build(BuildContext c) => Container(
     padding: const EdgeInsets.all(16),
@@ -623,31 +1087,60 @@ class _Chart extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Transaction volume',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 14),
-        SizedBox(
-          height: 100,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [42, 58, 49, 74, 68, 91, 83]
-                .map(
-                  (x) => Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: Container(
-                        height: x.toDouble(),
-                        color: AppTheme.accent,
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
+        _seriesChart('Transaction volume', volumeSeries),
+        const SizedBox(height: 18),
+        _seriesChart('Cards issued', issuanceSeries),
       ],
     ),
   );
+
+  Widget _seriesChart(String title, List<double> values) {
+    final maximum = values.fold<double>(
+      0,
+      (current, value) => value > current ? value : current,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 10),
+        if (values.isEmpty)
+          const Text('No series data available.')
+        else
+          SizedBox(
+            height: 92,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: values
+                  .map(
+                    (value) => Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        child: Tooltip(
+                          message: value.toStringAsFixed(0),
+                          child: Container(
+                            height: maximum == 0 ? 2 : 82 * value / maximum,
+                            decoration: BoxDecoration(
+                              color: AppTheme.accent,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+      ],
+    );
+  }
 }
+
+String _titleCase(String value) => value
+    .split('_')
+    .map(
+      (part) =>
+          part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}',
+    )
+    .join(' ');
