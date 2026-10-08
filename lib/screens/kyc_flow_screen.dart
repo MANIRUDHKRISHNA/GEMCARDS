@@ -12,7 +12,7 @@ import '../widgets/primary_button.dart';
 import '../widgets/step_header.dart';
 import 'camera_capture_screen.dart';
 import 'liveness_screen.dart';
-import 'product_shell.dart';
+import 'customer/customer_experience.dart';
 
 class KycFlowScreen extends StatefulWidget {
   const KycFlowScreen({this.repository, super.key});
@@ -1143,7 +1143,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
             label: 'Go to dashboard',
             onPressed: () => Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute<void>(
-                builder: (_) => const GemcardsProductShell(),
+                builder: (_) => const CustomerExperienceScreen(),
               ),
               (_) => false,
             ),
