@@ -95,7 +95,7 @@ def touch(session: Session) -> Session:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "jiffy-kyc-prototype"}
+    return {"status": "ok", "service": "gemcards-onboarding-prototype"}
 
 
 @app.post("/api/v1/kyc/session", response_model=Session)

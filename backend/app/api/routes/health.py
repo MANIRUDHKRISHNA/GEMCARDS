@@ -3,4 +3,4 @@ router = APIRouter()
 
 @router.get('/health')
 def health() -> dict[str, str]:
-    return {'status': 'ok', 'service': 'jiffy-kyc-prototype'}
+    return {'status': 'ok', 'service': 'gemcards-onboarding-prototype'}

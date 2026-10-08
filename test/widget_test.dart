@@ -7,15 +7,14 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:nsdl_jiffy_kyc_prototype/main.dart';
+import 'package:gemcards_onboarding_prototype/main.dart';
 
 void main() {
   testWidgets('shows the KYC identity journey', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const JiffyKycApp());
+    await tester.pumpWidget(const GemcardsApp());
 
-    expect(find.text('Verify your identity'), findsOneWidget);
-    expect(find.text('Continue'), findsOneWidget);
-    expect(find.text('KYC PROTOTYPE'), findsOneWidget);
+    expect(find.text('Welcome to GEMCARDS'), findsOneWidget);
+    expect(find.text('Begin onboarding'), findsOneWidget);
   });
 }

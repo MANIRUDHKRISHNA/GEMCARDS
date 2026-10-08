@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static const ink = Color(0xFF111312);
-  static const muted = Color(0xFF68706A);
-  static const surface = Color(0xFFF7F8F6);
-  static const accent = Color(0xFF8EAD47);
-  static const accentDark = Color(0xFF617D24);
-  static const border = Color(0xFFDDE2DB);
+  // GEMCARDS uses a crisp enterprise-blue direction with a restrained violet accent.
+  static const ink = Color(0xFF10223E);
+  static const muted = Color(0xFF60708A);
+  static const surface = Color(0xFFF6F8FC);
+  static const accent = Color(0xFF5B66D6);
+  static const accentDark = Color(0xFF173F8A);
+  static const success = Color(0xFF16856A);
+  static const warning = Color(0xFFD98927);
+  static const error = Color(0xFFC53B52);
+  static const border = Color(0xFFD9E1EE);
 
   static ThemeData get light {
     final scheme = ColorScheme.fromSeed(
@@ -19,12 +23,13 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: scheme.copyWith(
         primary: accentDark,
+        secondary: accent,
         onPrimary: Colors.white,
         surface: surface,
         onSurface: ink,
       ),
       scaffoldBackgroundColor: Colors.white,
-      fontFamily: 'Roboto',
+      fontFamily: 'sans-serif',
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.white,
         foregroundColor: ink,
@@ -46,6 +51,11 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: accentDark, width: 1.5),
         ),
+      ),
+      cardTheme: CardThemeData(
+        color: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
     );
   }

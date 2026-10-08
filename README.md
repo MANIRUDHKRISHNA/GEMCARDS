@@ -1,8 +1,8 @@
-# NSDL GEMCARDS
+# GEMCARDS Onboarding Prototype
 
-A two-day Android prototype for a six-step digital KYC onboarding flow built with Flutter/Dart and a small FastAPI backend.
+A GEMCARDS customer-onboarding demonstration built with Flutter/Dart and a small FastAPI backend. GEMCARDS is Gemini Software Solutions' retail payment suite for card issuance, card lifecycle management and transaction processing.
 
-> **Prototype disclaimer:** This is an engineering/demo prototype inspired by the requested NSDL Payments Bank Jiffy KYC journey. It is **not an official NSDL application**, does not perform real KYC, and must not be used to collect real Aadhaar, PAN, passport, financial, or biometric data.
+> **Prototype disclaimer:** This is an engineering/demo prototype. It is not production KYC, does not perform government identity verification, and must not be used with real Aadhaar, PAN, passport, financial, or biometric data.
 
 ## Goal
 

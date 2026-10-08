@@ -1,4 +1,4 @@
-package com.example.nsdl_jiffy_kyc_prototype
+package com.geminisoftware.gemcards_onboarding
 
 import io.flutter.embedding.android.FlutterActivity
 

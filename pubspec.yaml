@@ -1,5 +1,5 @@
-name: nsdl_jiffy_kyc_prototype
-description: A two-day Flutter prototype for a six-step digital KYC onboarding journey inspired by NSDL Jiffy.
+name: gemcards_onboarding_prototype
+description: GEMCARDS customer onboarding prototype by Gemini Software Solutions.
 publish_to: 'none'
 version: 0.1.0+1
 

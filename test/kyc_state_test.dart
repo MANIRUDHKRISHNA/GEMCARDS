@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nsdl_jiffy_kyc_prototype/models/kyc_state.dart';
-import 'package:nsdl_jiffy_kyc_prototype/repositories/kyc_repository.dart';
+import 'package:gemcards_onboarding_prototype/models/kyc_state.dart';
+import 'package:gemcards_onboarding_prototype/repositories/kyc_repository.dart';
 
 void main() {
   test('review declarations require explicit acceptance', () {

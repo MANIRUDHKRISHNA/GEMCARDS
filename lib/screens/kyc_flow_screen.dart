@@ -280,7 +280,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         const StepHeader(
           step: 1,
           title: 'Verify your identity',
-          subtitle: 'Complete a quick verification to continue. Estimated time: 2 minutes.',
+          subtitle: 'Complete your details to begin your GEMCARDS card onboarding. Estimated time: 2 minutes.',
         ),
         const SizedBox(height: 24),
         const StatusCard(
@@ -322,8 +322,8 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
       children: [
         const StepHeader(
           step: 2,
-          title: 'Capture your ID',
-          subtitle: 'Use good lighting. Keep the document flat, visible and free from glare.',
+          title: 'Verify your identity',
+          subtitle: 'Capture your identification document in good lighting to continue.',
         ),
         const SizedBox(height: 22),
         _CaptureTile(
@@ -373,8 +373,8 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
       children: [
         const StepHeader(
           step: 3,
-          title: 'Confirm it’s really you',
-          subtitle: 'A short liveness check helps prevent simple photo or replay attacks.',
+          title: 'Confirm it’s you',
+          subtitle: 'Take a quick selfie to continue. This is a simulated prototype check.',
         ),
         const SizedBox(height: 24),
         Container(
@@ -536,8 +536,8 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
       children: [
         const StepHeader(
           step: 5,
-          title: 'Review and declare',
-          subtitle: 'Check the details before the verification request is submitted.',
+          title: 'Review your details',
+          subtitle: 'Make sure everything is correct before submitting your GEMCARDS onboarding request.',
         ),
         const SizedBox(height: 24),
         _ReviewCard(
@@ -605,21 +605,21 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         ),
         const SizedBox(height: 28),
         const Text(
-          'Prototype verification complete',
+          'You’re all set',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 10),
         const Text(
-          'This is a simulated pass for the prototype. No real KYC decision has been made.',
+          'Your GEMCARDS onboarding request has been submitted. Demo verification complete; no real KYC decision has been made.',
           textAlign: TextAlign.center,
           style: TextStyle(color: AppTheme.muted, height: 1.45),
         ),
         const SizedBox(height: 24),
         const StatusCard(
           icon: Icons.account_balance_wallet_rounded,
-          title: 'Demo account tier unlocked',
-          message: 'Basic digital onboarding complete. Production limits, risk checks and account activation belong behind the approved backend flow.',
+          title: 'Onboarding submitted',
+          message: 'Your customer profile is ready for demo processing. Card issuance and activation remain part of an approved production flow.',
         ),
         const SizedBox(height: 18),
         PrimaryButton(
