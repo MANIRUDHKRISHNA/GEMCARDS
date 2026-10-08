@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from app.domain import store
 from app.schemas.domain import FraudAlert
@@ -13,9 +13,4 @@ def list_fraud_alerts() -> list[FraudAlert]:
 
 @router.post("/{alert_id}/resolve", response_model=FraudAlert)
 def resolve_fraud_alert(alert_id: str) -> FraudAlert:
-    alert = store.fraud_alerts.get(alert_id)
-    if alert is None:
-        raise HTTPException(status_code=404, detail="Fraud alert not found")
-    alert.status = "resolved"
-    alert.resolved_at = store.now_iso()
-    return alert
+    return store.resolve_fraud_alert(alert_id)

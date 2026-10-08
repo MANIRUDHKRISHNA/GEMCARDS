@@ -1,7 +1,15 @@
 from fastapi import APIRouter, HTTPException
 
 from app.domain import store
-from app.schemas.domain import Card, CardControls, VirtualCardCreate
+from app.schemas.domain import (
+    Card,
+    CardApplication,
+    CardApplicationCreate,
+    CardControls,
+    CardStatus,
+    CardStatusUpdate,
+    VirtualCardCreate,
+)
 
 router = APIRouter(prefix="/api/v1/cards", tags=["cards"])
 
@@ -11,6 +19,31 @@ def list_cards() -> list[Card]:
     return list(store.cards.values())
 
 
+@router.post(
+    "/applications",
+    response_model=CardApplication,
+    status_code=201,
+)
+def create_card_application(payload: CardApplicationCreate) -> CardApplication:
+    return store.create_card_application(payload.customer_id, payload.product)
+
+
+@router.get("/applications", response_model=list[CardApplication])
+def list_card_applications() -> list[CardApplication]:
+    return list(store.card_applications.values())
+
+
+@router.get(
+    "/applications/{application_id}",
+    response_model=CardApplication,
+)
+def card_application_detail(application_id: str) -> CardApplication:
+    application = store.card_applications.get(application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail="Card application not found")
+    return application
+
+
 @router.get("/{card_id}", response_model=Card)
 def card_detail(card_id: str) -> Card:
     return store.get_card(card_id)
@@ -18,27 +51,31 @@ def card_detail(card_id: str) -> Card:
 
 @router.post("/{card_id}/freeze", response_model=Card)
 def freeze_card(card_id: str) -> Card:
-    card = store.get_card(card_id)
-    if card.status == "closed":
-        raise HTTPException(status_code=409, detail="Closed cards cannot be frozen")
-    card.status = "frozen"
-    return card
+    return _transition_card(card_id, "frozen")
 
 
 @router.post("/{card_id}/unfreeze", response_model=Card)
 def unfreeze_card(card_id: str) -> Card:
-    card = store.get_card(card_id)
-    if card.status == "closed":
-        raise HTTPException(status_code=409, detail="Closed cards cannot be unfrozen")
-    card.status = "active"
-    return card
+    return _transition_card(card_id, "active")
+
+
+@router.post("/{card_id}/transition", response_model=Card)
+def transition_card(card_id: str, payload: CardStatusUpdate) -> Card:
+    return _transition_card(card_id, payload.status)
 
 
 @router.patch("/{card_id}/controls", response_model=Card)
 def update_card_controls(card_id: str, payload: CardControls) -> Card:
     card = store.get_card(card_id)
-    for name, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for name, value in changes.items():
         setattr(card, name, value)
+    store.record_audit_event(
+        "CARD_CONTROLS_UPDATED",
+        customer_id=card.customer_id,
+        card_id=card.id,
+        details=changes,
+    )
     return card
 
 
@@ -64,4 +101,17 @@ def create_virtual_card(payload: VirtualCardCreate) -> Card:
         atm_enabled=False,
     )
     store.cards[card.id] = card
+    store.record_audit_event(
+        "CARD_ISSUED",
+        customer_id=card.customer_id,
+        card_id=card.id,
+        details={"card_type": card.card_type, "product": card.product},
+    )
     return card
+
+
+def _transition_card(card_id: str, status: CardStatus) -> Card:
+    try:
+        return store.transition_card(card_id, status)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error

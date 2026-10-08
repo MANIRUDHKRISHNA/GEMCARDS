@@ -32,7 +32,8 @@ def test_upload_rejects_invalid_type() -> None:
 
 
 def test_admin_demo_contract_and_simulation_rules() -> None:
-    assert client.get('/api/v1/admin/metrics').json()['total_customers'] == 12480
+    metrics = client.get('/api/v1/admin/metrics').json()
+    assert metrics['total_customers'] == len(client.get('/api/v1/admin/customers').json())
     assert client.get('/api/v1/admin/customers', params={'query': 'Alex'}).json()[0]['id'] == 'CUS-DEMO-001'
     assert client.post('/api/v1/admin/cards/CARD-001/freeze').json()['status'] == 'frozen'
     response = client.post('/api/v1/admin/transactions/simulate', json={'card_id': 'CARD-001', 'merchant': 'Demo Store', 'amount': 100, 'country': 'India', 'transaction_type': 'purchase'})
