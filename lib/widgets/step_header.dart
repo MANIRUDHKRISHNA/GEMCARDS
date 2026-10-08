@@ -28,14 +28,14 @@ class StepHeader extends StatelessWidget {
             letterSpacing: 1,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Text(title, style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 9),
+        const SizedBox(height: 8),
         Text(
           subtitle,
           style: Theme.of(
             context,
-          ).textTheme.bodyMedium?.copyWith(color: AppTheme.muted, fontSize: 15),
+          ).textTheme.bodyMedium?.copyWith(color: AppTheme.muted),
         ),
       ],
     );

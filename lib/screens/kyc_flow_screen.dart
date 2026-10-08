@@ -376,7 +376,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
             decoration: BoxDecoration(
               color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -761,7 +761,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: AppTheme.border),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
               boxShadow: [
                 BoxShadow(
                   color: AppTheme.ink.withValues(alpha: .05),
@@ -818,12 +818,12 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
               : 'Replace uploaded file ${kyc.addressDocument}',
           child: InkWell(
             onTap: _pickAddressDocument,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
                 border: Border.all(
                   color: kyc.addressDocument.isEmpty
                       ? AppTheme.border
@@ -840,7 +840,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
                     height: 46,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
                     ),
                     child: Icon(
                       kyc.addressDocument.isEmpty
@@ -1199,7 +1199,7 @@ class _DocumentChoiceTile extends StatelessWidget {
       label: '$title${selected ? ', selected' : ''}',
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
@@ -1207,7 +1207,7 @@ class _DocumentChoiceTile extends StatelessWidget {
             color: selected
                 ? AppTheme.accentDark.withValues(alpha: .045)
                 : Colors.white,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
             border: Border.all(
               color: selected ? AppTheme.accentDark : AppTheme.border,
               width: selected ? 1.5 : 1,
@@ -1276,7 +1276,7 @@ class _InlineNotice extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1315,14 +1315,14 @@ class _DocumentPreview extends StatelessWidget {
           : 'Document camera preview. Tap to capture the front.',
       child: InkWell(
         onTap: onCapture,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
         child: AspectRatio(
           aspectRatio: 1.48,
           child: Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
               border: Border.all(color: AppTheme.border.withValues(alpha: .8)),
             ),
             child: Column(
@@ -1527,7 +1527,7 @@ class _LivenessPreview extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
       decoration: BoxDecoration(
         color: AppTheme.ink,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppTheme.radiusXLarge),
       ),
       child: Column(
         children: [
@@ -1711,7 +1711,7 @@ class _VerificationSummary extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppTheme.success.withValues(alpha: .05),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
         border: Border.all(color: AppTheme.success.withValues(alpha: .25)),
       ),
       child: Row(
@@ -1908,25 +1908,29 @@ class _ProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        children: List.generate(6, (index) {
-          final active = index + 1 <= step;
-          return Expanded(
-            child: Container(
-              height: 3,
-              margin: EdgeInsets.only(right: index == 5 ? 0 : 6),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                decoration: BoxDecoration(
-                  color: active ? AppTheme.accentDark : AppTheme.border,
-                  borderRadius: BorderRadius.circular(10),
+    return Semantics(
+      label: 'Onboarding step $step of 6',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
+        child: Row(
+          children: List.generate(6, (index) {
+            final active = index + 1 <= step;
+            return Expanded(
+              child: Container(
+                height: 4,
+                margin: EdgeInsets.only(right: index == 5 ? 0 : 6),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                  decoration: BoxDecoration(
+                    color: active ? AppTheme.accentDark : AppTheme.border,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
-            ),
-          );
-        }),
+            );
+          }),
+        ),
       ),
     );
   }
@@ -1947,14 +1951,14 @@ class _CaptureTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
           color: complete
               ? AppTheme.success.withValues(alpha: .05)
               : AppTheme.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
           border: Border.all(
             color: complete
                 ? AppTheme.success.withValues(alpha: .45)
@@ -2013,7 +2017,7 @@ class _ReviewCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(17, 16, 17, 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
         border: Border.all(color: AppTheme.border.withValues(alpha: .75)),
         boxShadow: [
           BoxShadow(

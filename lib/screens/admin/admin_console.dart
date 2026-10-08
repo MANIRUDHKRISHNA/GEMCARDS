@@ -23,7 +23,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('GEMCARDS / OPERATIONS'),
+      title: const Text('GEMCARDS Ops'),
       actions: const [
         Padding(
           padding: EdgeInsets.all(16),
@@ -34,48 +34,97 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
         ),
       ],
     ),
-    body: Row(
-      children: [
-        NavigationRail(
-          selectedIndex: tab,
-          labelType: NavigationRailLabelType.all,
-          onDestinationSelected: (v) => setState(() => tab = v),
-          destinations: labels
-              .map(
-                (x) => NavigationRailDestination(
-                  icon: Icon(_icon(x)),
-                  label: Text(x),
+    body: LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 760) {
+          return Column(
+            children: [
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  children: [
+                    for (var index = 0; index < labels.length; index++) ...[
+                      if (index > 0) const SizedBox(width: 8),
+                      ChoiceChip(
+                        avatar: Icon(_icon(labels[index]), size: 17),
+                        label: Text(labels[index]),
+                        selected: tab == index,
+                        onSelected: (_) => setState(() => tab = index),
+                      ),
+                    ],
+                  ],
                 ),
-              )
-              .toList(),
-        ),
-        const VerticalDivider(width: 1),
-        Expanded(
-          child: Padding(padding: const EdgeInsets.all(28), child: _body()),
-        ),
-      ],
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: _body(),
+                ),
+              ),
+            ],
+          );
+        }
+        return Row(
+          children: [
+            NavigationRail(
+              selectedIndex: tab,
+              labelType: NavigationRailLabelType.all,
+              onDestinationSelected: (value) => setState(() => tab = value),
+              destinations: labels
+                  .map(
+                    (label) => NavigationRailDestination(
+                      icon: Icon(_icon(label)),
+                      label: Text(label),
+                    ),
+                  )
+                  .toList(),
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: Padding(padding: const EdgeInsets.all(28), child: _body()),
+            ),
+          ],
+        );
+      },
     ),
   );
   Widget _body() {
-    if (tab == 0)
+    if (tab == 0) {
       return _page(
         'Portfolio overview',
         'Deterministic synthetic operations snapshot',
         ListView(
           children: [
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: const [
-                _Kpi('12,480', 'Total customers'),
-                _Kpi('18,340', 'Active cards'),
-                _Kpi('918', 'Transactions today'),
-                _Kpi('₹12.8L', 'Transaction volume'),
-                _Kpi('24', 'Pending KYC'),
-                _Kpi('1', 'Fraud alert'),
-                _Kpi('1', 'Open disputes'),
-                _Kpi('42', 'Cards issued today'),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const gap = 12.0;
+                final columns = constraints.maxWidth >= 920
+                    ? 4
+                    : constraints.maxWidth >= 560
+                    ? 2
+                    : 1;
+                final width =
+                    (constraints.maxWidth - (columns - 1) * gap) / columns;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    for (final item in const [
+                      _Kpi('12,480', 'Total customers'),
+                      _Kpi('18,340', 'Active cards'),
+                      _Kpi('918', 'Transactions today'),
+                      _Kpi('₹12.8L', 'Transaction volume'),
+                      _Kpi('24', 'Pending KYC'),
+                      _Kpi('1', 'Fraud alert'),
+                      _Kpi('1', 'Open disputes'),
+                      _Kpi('42', 'Cards issued today'),
+                    ])
+                      SizedBox(width: width, child: item),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 24),
             const _Chart(),
@@ -93,7 +142,8 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
           ],
         ),
       );
-    if (tab == 1)
+    }
+    if (tab == 1) {
       return _queue(
         'Customers',
         'Name · ID · KYC · cards · transactions · risk',
@@ -103,8 +153,11 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
           'Jordan Lee · CUS-DEMO-003 · Pending · 0 cards · 0 transactions · Low risk',
         ],
       );
-    if (tab == 2) return _cards();
-    if (tab == 3)
+    }
+    if (tab == 2) {
+      return _cards();
+    }
+    if (tab == 3) {
       return _queue(
         'Transaction operations',
         'Merchant · customer · card · timestamp · status · risk',
@@ -114,14 +167,20 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
           'Northstar Electronics · Priya Shah · •••• 7730 · 08:16 · ₹9,800 · Declined · risk 91',
         ],
       );
-    if (tab == 4)
+    }
+    if (tab == 4) {
       return _page(
         'Authorization simulator',
         'Deterministic card-status, limit and international rules',
         _Simulator(frozen: frozen),
       );
-    if (tab == 5) return _fraud();
-    if (tab == 6) return _disputes();
+    }
+    if (tab == 5) {
+      return _fraud();
+    }
+    if (tab == 6) {
+      return _disputes();
+    }
     return _queue('Reports', 'Concise synthetic portfolio reporting', const [
       'Card issuance · 42 cards issued today',
       'Transaction volume · ₹12.8L processed today',
@@ -134,9 +193,14 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(title, style: Theme.of(context).textTheme.headlineSmall),
-      const SizedBox(height: 4),
-      Text(subtitle, style: const TextStyle(color: AppTheme.muted)),
-      const SizedBox(height: 22),
+      const SizedBox(height: 6),
+      Text(
+        subtitle,
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: AppTheme.muted),
+      ),
+      const SizedBox(height: 20),
       Expanded(child: child),
     ],
   );
@@ -269,8 +333,8 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
               const Text(
                 'Timeline: opened by customer → awaiting operations review',
               ),
-              DropdownButtonFormField(
-                value: 'Open',
+              DropdownButtonFormField<String>(
+                initialValue: 'Open',
                 items: const ['Open', 'Investigating', 'Resolved']
                     .map((x) => DropdownMenuItem(value: x, child: Text(x)))
                     .toList(),
@@ -286,7 +350,8 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      border: Border.all(color: AppTheme.border),
     ),
     child: child,
   );
@@ -318,32 +383,64 @@ class _SimulatorState extends State<_Simulator> {
   final amount = TextEditingController(text: '1200');
   String country = 'India';
   String? decision;
+  String? inputError;
+
+  @override
+  void dispose() {
+    amount.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => ListView(
     children: [
       TextField(
         controller: amount,
         keyboardType: TextInputType.number,
+        onChanged: (_) => setState(() => inputError = null),
         decoration: const InputDecoration(labelText: 'Amount (₹)'),
       ),
+      if (inputError != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            inputError!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
       const SizedBox(height: 12),
-      DropdownButtonFormField(
-        value: country,
+      DropdownButtonFormField<String>(
+        initialValue: country,
         decoration: const InputDecoration(labelText: 'Country'),
         items: const [
           'India',
           'Singapore',
         ].map((x) => DropdownMenuItem(value: x, child: Text(x))).toList(),
-        onChanged: (x) => setState(() => country = x!),
+        onChanged: (value) {
+          if (value != null) {
+            setState(() => country = value);
+          }
+        },
       ),
       const SizedBox(height: 14),
       FilledButton.icon(
-        onPressed: () => setState(() {
-          final n = double.tryParse(amount.text) ?? 0;
-          decision = widget.frozen || n > 50000 || country != 'India'
-              ? 'DECLINED'
-              : 'APPROVED';
-        }),
+        onPressed: () {
+          final parsedAmount = double.tryParse(amount.text);
+          if (parsedAmount == null || parsedAmount <= 0) {
+            setState(() {
+              inputError = 'Enter a valid amount greater than zero.';
+              decision = null;
+            });
+            return;
+          }
+          setState(() {
+            inputError = null;
+            decision =
+                widget.frozen || parsedAmount > 50000 || country != 'India'
+                ? 'DECLINED'
+                : 'APPROVED';
+          });
+        },
         icon: const Icon(Icons.play_arrow),
         label: const Text('Simulate authorization'),
       ),
@@ -392,11 +489,11 @@ class _Kpi extends StatelessWidget {
   final String value, label;
   @override
   Widget build(BuildContext c) => Container(
-    width: 180,
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      border: Border.all(color: AppTheme.border),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -419,7 +516,7 @@ class _Chart extends StatelessWidget {
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,

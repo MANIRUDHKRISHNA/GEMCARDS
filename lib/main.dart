@@ -90,7 +90,9 @@ class _WelcomeScreenState extends State<_WelcomeScreen> {
                         padding: const EdgeInsets.all(22),
                         decoration: BoxDecoration(
                           color: AppTheme.surface,
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusXLarge,
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,7 +180,7 @@ class _WelcomeScreenState extends State<_WelcomeScreen> {
                       const Spacer(),
                       SizedBox(
                         width: double.infinity,
-                        height: 58,
+                        height: 56,
                         child: FilledButton.icon(
                           onPressed: _start,
                           icon: const Icon(Icons.arrow_forward_rounded),

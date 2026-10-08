@@ -18,7 +18,7 @@ class PrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 58,
+      height: 56,
       child: FilledButton.icon(
         onPressed: onPressed,
         icon: Icon(icon ?? Icons.arrow_forward_rounded),

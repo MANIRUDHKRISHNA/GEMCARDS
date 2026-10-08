@@ -11,6 +11,10 @@ class AppTheme {
   static const warning = Color(0xFFD98927);
   static const error = Color(0xFFC53B52);
   static const border = Color(0xFFD9E1EE);
+  static const radiusSmall = 12.0;
+  static const radiusMedium = 16.0;
+  static const radiusLarge = 20.0;
+  static const radiusXLarge = 24.0;
 
   static ThemeData get light {
     final scheme = ColorScheme.fromSeed(
@@ -79,7 +83,9 @@ class AppTheme {
         backgroundColor: Colors.white,
         foregroundColor: ink,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: false,
+        toolbarHeight: 64,
         titleTextStyle: TextStyle(
           color: ink,
           fontSize: 18,
@@ -91,18 +97,18 @@ class AppTheme {
         fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
-          vertical: 17,
+          vertical: 15,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(radiusMedium),
           borderSide: const BorderSide(color: border, width: 1),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(radiusMedium),
           borderSide: const BorderSide(color: border, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(radiusMedium),
           borderSide: const BorderSide(color: accentDark, width: 1.5),
         ),
       ),
@@ -110,17 +116,42 @@ class AppTheme {
         color: Colors.white,
         elevation: 1,
         shadowColor: ink.withValues(alpha: .04),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusLarge),
+        ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: accentDark,
           foregroundColor: Colors.white,
-          minimumSize: const Size(48, 56),
+          minimumSize: const Size(48, 54),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(radiusMedium),
           ),
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: accentDark,
+          minimumSize: const Size(48, 48),
+          side: const BorderSide(color: border),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusMedium),
+          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        height: 72,
+        backgroundColor: Colors.white,
+        indicatorColor: accentDark.withValues(alpha: .08),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => TextStyle(
+            color: states.contains(WidgetState.selected) ? accentDark : muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

@@ -19,7 +19,7 @@ class GemCardVisual extends StatelessWidget {
     padding: EdgeInsets.all(compact ? 18 : 22),
     decoration: BoxDecoration(
       color: frozen ? AppTheme.muted : AppTheme.accentDark,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,15 +53,19 @@ class GemCardVisual extends StatelessWidget {
         const SizedBox(height: 16),
         Row(
           children: [
-            Text(
-              card.virtual ? 'VIRTUAL CARD' : 'PLATINUM',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+            Expanded(
+              child: Text(
+                card.type.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(width: 10),
             Text(
               frozen ? 'FROZEN' : 'ACTIVE',
               style: const TextStyle(

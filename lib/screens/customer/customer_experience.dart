@@ -14,35 +14,145 @@ class CustomerExperienceScreen extends StatefulWidget {
 }
 
 class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
-  late final Future<DashboardSummary> _summary =
-      (widget.repository ?? DemoProductRepository()).loadCustomerSummary();
+  late Future<DashboardSummary> _summary;
   int _index = 0;
-  bool _frozen = false;
+  final Map<String, bool> _frozenOverrides = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _summary = _loadSummary();
+  }
+
+  Future<DashboardSummary> _loadSummary() =>
+      (widget.repository ?? DemoProductRepository()).loadCustomerSummary();
+
+  bool _isFrozen(Card card) =>
+      _frozenOverrides[card.id] ?? card.status == CardStatus.frozen;
+
+  void _setFrozen(Card card, bool frozen) {
+    setState(() => _frozenOverrides[card.id] = frozen);
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<DashboardSummary>(
     future: _summary,
     builder: (context, snapshot) {
-      if (!snapshot.hasData) {
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Scaffold(
+          backgroundColor: AppTheme.surface,
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(strokeWidth: 2.5),
+                SizedBox(height: 18),
+                Text('Preparing your dashboard'),
+              ],
+            ),
+          ),
+        );
       }
-      final summary = snapshot.data!;
+      if (snapshot.hasError || !snapshot.hasData) {
+        return Scaffold(
+          backgroundColor: AppTheme.surface,
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 380),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.cloud_off_outlined,
+                      size: 34,
+                      color: AppTheme.muted,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Dashboard unavailable',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'We couldn’t load your demo account right now.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: AppTheme.muted),
+                    ),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _summary = _loadSummary();
+                          });
+                        },
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Try again'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+      final summary = snapshot.requireData;
+      if (summary.cards.isEmpty) {
+        return const Scaffold(
+          backgroundColor: AppTheme.surface,
+          body: _EmptyState(
+            icon: Icons.credit_card_off_outlined,
+            title: 'No cards yet',
+            message: 'Cards for this demo profile will appear here.',
+          ),
+        );
+      }
+      final primaryCard = summary.cards.first;
+      Card? virtualCard;
+      for (final card in summary.cards) {
+        if (card.virtual) {
+          virtualCard = card;
+          break;
+        }
+      }
       final pages = [
         _Home(
           summary: summary,
-          frozen: _frozen,
+          frozen: _isFrozen(primaryCard),
           onCards: () => setState(() => _index = 1),
           onActivity: () => setState(() => _index = 2),
         ),
         _Cards(
           summary: summary,
-          frozen: _frozen,
-          onFrozen: (value) => setState(() => _frozen = value),
+          primaryCard: primaryCard,
+          frozen: _isFrozen(primaryCard),
+          onFrozen: (value) => _setFrozen(primaryCard, value),
+          virtualCard: virtualCard,
+          virtualFrozen: virtualCard == null ? false : _isFrozen(virtualCard),
+          onVirtualFrozen: virtualCard == null
+              ? null
+              : (value) => _setFrozen(virtualCard!, value),
         ),
         _Transactions(summary: summary),
         _More(
           summary: summary,
-          frozen: _frozen,
-          onFrozen: (value) => setState(() => _frozen = value),
+          virtualCard: virtualCard,
+          virtualFrozen: virtualCard == null ? false : _isFrozen(virtualCard),
+          onVirtualFrozen: virtualCard == null
+              ? null
+              : (value) => _setFrozen(virtualCard!, value),
         ),
       ];
       return Scaffold(
@@ -55,7 +165,22 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
             ),
           ],
         ),
-        body: pages[_index],
+        body: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(.015, 0),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          ),
+          child: KeyedSubtree(key: ValueKey(_index), child: pages[_index]),
+        ),
         bottomNavigationBar: NavigationBar(
           height: 72,
           selectedIndex: _index,
@@ -103,7 +228,7 @@ class _Home extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Good morning, Alex',
+            'Good morning, ${summary.customer.name.split(' ').first}',
             style: Theme.of(c).textTheme.headlineSmall,
           ),
           const SizedBox(height: 4),
@@ -111,27 +236,46 @@ class _Home extends StatelessWidget {
             'Your card application is ready',
             style: TextStyle(color: AppTheme.muted),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 20),
           Text('Available balance', style: Theme.of(c).textTheme.labelLarge),
           const SizedBox(height: 4),
           Text('₹ 24,680.00', style: Theme.of(c).textTheme.displaySmall),
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
           GemCardVisual(card: summary.cards.first, frozen: frozen),
           const SizedBox(height: 20),
           _QuickActions(onCards: onCards, onActivity: onActivity),
-          const SizedBox(height: 24),
-          Text('Recent transactions', style: Theme.of(c).textTheme.titleLarge),
-          ...summary.transactions.map(
-            (transaction) => _TransactionTile(
-              transaction: transaction,
-              onTap: () => Navigator.of(c).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      TransactionDetailsScreen(transaction: transaction),
+          const SizedBox(height: 26),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Recent transactions',
+                  style: Theme.of(c).textTheme.titleLarge,
                 ),
               ),
-            ),
+              TextButton(onPressed: onActivity, child: const Text('See all')),
+            ],
           ),
+          if (summary.transactions.isEmpty)
+            const _EmptyState(
+              icon: Icons.receipt_long_outlined,
+              title: 'No activity yet',
+              message: 'Your card transactions will appear here.',
+            )
+          else
+            ...summary.transactions
+                .take(3)
+                .map(
+                  (transaction) => _TransactionTile(
+                    transaction: transaction,
+                    onTap: () => Navigator.of(c).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            TransactionDetailsScreen(transaction: transaction),
+                      ),
+                    ),
+                  ),
+                ),
           const SizedBox(height: 18),
           _SpendSummary(transactions: summary.transactions),
         ],
@@ -184,22 +328,37 @@ class _Action extends StatelessWidget {
   @override
   Widget build(BuildContext c) => InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(16),
+    borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
     child: Container(
-      height: 100,
+      height: 92,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppTheme.accentDark),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppTheme.accentDark.withValues(alpha: .07),
+              borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+            ),
+            child: Icon(icon, color: AppTheme.accentDark, size: 19),
+          ),
           const Spacer(),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(c).textTheme.labelMedium?.copyWith(
+              color: AppTheme.ink,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -210,12 +369,20 @@ class _Action extends StatelessWidget {
 class _Cards extends StatefulWidget {
   const _Cards({
     required this.summary,
+    required this.primaryCard,
     required this.frozen,
     required this.onFrozen,
+    required this.virtualCard,
+    required this.virtualFrozen,
+    required this.onVirtualFrozen,
   });
   final DashboardSummary summary;
+  final Card primaryCard;
   final bool frozen;
   final ValueChanged<bool> onFrozen;
+  final Card? virtualCard;
+  final bool virtualFrozen;
+  final ValueChanged<bool>? onVirtualFrozen;
   @override
   State<_Cards> createState() => _CardsState();
 }
@@ -229,10 +396,10 @@ class _CardsState extends State<_Cards> {
       children: [
         Text('My cards', style: Theme.of(c).textTheme.headlineSmall),
         const SizedBox(height: 18),
-        GemCardVisual(card: widget.summary.cards.first, frozen: widget.frozen),
+        GemCardVisual(card: widget.primaryCard, frozen: widget.frozen),
         const SizedBox(height: 12),
         Text(
-          '•••• 4821  •  Expires 09/30  •  ₹24,680 available',
+          '•••• ${widget.primaryCard.lastFour}  •  ${widget.primaryCard.type}',
           style: const TextStyle(color: AppTheme.muted),
         ),
         const SizedBox(height: 18),
@@ -262,19 +429,20 @@ class _CardsState extends State<_Cards> {
           trailing: Text('₹50,000'),
         ),
         const Divider(),
-        ListTile(
-          leading: const Icon(Icons.credit_card_rounded),
-          title: const Text('View virtual card'),
-          onTap: () => Navigator.of(c).push(
-            MaterialPageRoute(
-              builder: (_) => VirtualCardScreen(
-                card: widget.summary.cards[1],
-                frozen: widget.frozen,
-                onFrozen: widget.onFrozen,
+        if (widget.virtualCard != null)
+          ListTile(
+            leading: const Icon(Icons.credit_card_rounded),
+            title: const Text('View virtual card'),
+            onTap: () => Navigator.of(c).push(
+              MaterialPageRoute(
+                builder: (_) => VirtualCardScreen(
+                  card: widget.virtualCard!,
+                  frozen: widget.virtualFrozen,
+                  onFrozen: widget.onVirtualFrozen!,
+                ),
               ),
             ),
           ),
-        ),
       ],
     ),
   );
@@ -343,18 +511,26 @@ class _TransactionsState extends State<_Transactions> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              itemCount: items.length,
-              itemBuilder: (_, i) => _TransactionTile(
-                transaction: items[i],
-                onTap: () => Navigator.of(c).push(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        TransactionDetailsScreen(transaction: items[i]),
+            child: items.isEmpty
+                ? const _EmptyState(
+                    icon: Icons.search_off_rounded,
+                    title: 'No matching transactions',
+                    message: 'Try another merchant or status filter.',
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: items.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (_, i) => _TransactionTile(
+                      transaction: items[i],
+                      onTap: () => Navigator.of(c).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              TransactionDetailsScreen(transaction: items[i]),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ),
           ),
         ],
       ),
@@ -365,12 +541,14 @@ class _TransactionsState extends State<_Transactions> {
 class _More extends StatelessWidget {
   const _More({
     required this.summary,
-    required this.frozen,
-    required this.onFrozen,
+    required this.virtualCard,
+    required this.virtualFrozen,
+    required this.onVirtualFrozen,
   });
   final DashboardSummary summary;
-  final bool frozen;
-  final ValueChanged<bool> onFrozen;
+  final Card? virtualCard;
+  final bool virtualFrozen;
+  final ValueChanged<bool>? onVirtualFrozen;
   @override
   Widget build(BuildContext c) => SafeArea(
     child: ListView(
@@ -393,19 +571,20 @@ class _More extends StatelessWidget {
             c,
           ).push(MaterialPageRoute(builder: (_) => const SpendingScreen())),
         ),
-        ListTile(
-          leading: const Icon(Icons.credit_card_outlined),
-          title: const Text('Virtual card'),
-          onTap: () => Navigator.of(c).push(
-            MaterialPageRoute(
-              builder: (_) => VirtualCardScreen(
-                card: summary.cards[1],
-                frozen: frozen,
-                onFrozen: onFrozen,
+        if (virtualCard != null)
+          ListTile(
+            leading: const Icon(Icons.credit_card_outlined),
+            title: const Text('Virtual card'),
+            onTap: () => Navigator.of(c).push(
+              MaterialPageRoute(
+                builder: (_) => VirtualCardScreen(
+                  card: virtualCard!,
+                  frozen: virtualFrozen,
+                  onFrozen: onVirtualFrozen!,
+                ),
               ),
             ),
           ),
-        ),
       ],
     ),
   );
@@ -419,15 +598,61 @@ class _TransactionTile extends StatelessWidget {
   Widget build(BuildContext c) => ListTile(
     onTap: onTap,
     contentPadding: EdgeInsets.zero,
+    minVerticalPadding: 12,
     leading: CircleAvatar(
-      backgroundColor: AppTheme.surface,
+      radius: 21,
+      backgroundColor: AppTheme.accentDark.withValues(alpha: .07),
       child: const Icon(Icons.storefront_outlined, color: AppTheme.accentDark),
     ),
-    title: Text(transaction.merchant),
-    subtitle: Text('${transaction.status.name.toUpperCase()} • 09 Oct'),
+    title: Text(
+      transaction.merchant,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    ),
+    subtitle: Text(
+      '${transaction.status.name.toUpperCase()}  ·  ${MaterialLocalizations.of(c).formatMediumDate(transaction.time)}',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(c).textTheme.bodySmall,
+    ),
     trailing: Text(
       '₹${transaction.amount.toStringAsFixed(0)}',
-      style: const TextStyle(fontWeight: FontWeight.w800),
+      style: Theme.of(c).textTheme.titleMedium?.copyWith(fontSize: 14),
+    ),
+  );
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 36, color: AppTheme.muted),
+          const SizedBox(height: 12),
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.muted),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -437,21 +662,25 @@ class _SpendSummary extends StatelessWidget {
   final List<CardTransaction> transactions;
   @override
   Widget build(BuildContext c) => Container(
-    padding: const EdgeInsets.all(18),
+    padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(18),
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+      border: Border.all(color: AppTheme.border),
     ),
-    child: const Column(
+    child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('October spending', style: TextStyle(fontWeight: FontWeight.w800)),
-        SizedBox(height: 12),
-        LinearProgressIndicator(value: .62),
-        SizedBox(height: 8),
+        Text('Recent spend', style: Theme.of(c).textTheme.titleMedium),
+        const SizedBox(height: 6),
         Text(
-          '₹1,539 across shopping and subscriptions',
-          style: TextStyle(color: AppTheme.muted),
+          '₹${transactions.fold<double>(0, (total, transaction) => total + transaction.amount).toStringAsFixed(0)}',
+          style: Theme.of(c).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${transactions.length} recent ${transactions.length == 1 ? 'transaction' : 'transactions'}',
+          style: Theme.of(c).textTheme.bodySmall,
         ),
       ],
     ),
@@ -477,9 +706,9 @@ class VirtualCardScreen extends StatelessWidget {
         children: [
           GemCardVisual(card: card, frozen: frozen),
           const SizedBox(height: 20),
-          const ListTile(
-            title: Text('Card number'),
-            subtitle: Text('•••• •••• •••• 9104'),
+          ListTile(
+            title: const Text('Card number'),
+            subtitle: Text('•••• •••• •••• ${card.lastFour}'),
           ),
           const ListTile(title: Text('Expiry'), trailing: Text('09/30')),
           const ListTile(title: Text('CVV'), trailing: Text('•••')),
@@ -523,12 +752,14 @@ class TransactionDetailsScreen extends StatelessWidget {
           style: Theme.of(c).textTheme.displaySmall,
         ),
         const SizedBox(height: 18),
-        _detail('Merchant', transaction.merchant),
-        _detail('Date & time', '09 Oct 2026, 10:42 AM'),
-        _detail('Card', 'GEMCARDS •••• 4821'),
-        _detail('Category', 'Shopping'),
-        _detail('Status', transaction.status.name.toUpperCase()),
-        _detail('Reference ID', transaction.id),
+        _detail(c, 'Merchant', transaction.merchant),
+        _detail(
+          c,
+          'Date & time',
+          '${MaterialLocalizations.of(c).formatMediumDate(transaction.time)}, ${TimeOfDay.fromDateTime(transaction.time).format(c)}',
+        ),
+        _detail(c, 'Status', transaction.status.name.toUpperCase()),
+        _detail(c, 'Reference ID', transaction.id),
         const SizedBox(height: 16),
         OutlinedButton.icon(
           onPressed: () => ScaffoldMessenger.of(c).showSnackBar(
@@ -542,10 +773,11 @@ class TransactionDetailsScreen extends StatelessWidget {
       ],
     ),
   );
-  Widget _detail(String a, String b) => ListTile(
+  Widget _detail(BuildContext c, String a, String b) => ListTile(
     contentPadding: EdgeInsets.zero,
+    minVerticalPadding: 8,
     title: Text(a),
-    trailing: Text(b),
+    subtitle: Text(b, style: Theme.of(c).textTheme.bodyMedium),
   );
 }
 
