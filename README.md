@@ -112,16 +112,89 @@ The wrapper uses Gradle 9.3.1 binary distribution with Android Gradle Plugin 9.1
 
 The project deliberately uses the `-bin` Gradle distribution: source and documentation artifacts are not needed to build the prototype.
 
-## Suggested API contract
+## API contracts
+
+The FastAPI service retains the KYC routes below and adds deterministic customer,
+card, authorization, fraud, dispute, and rewards demo routes. Interactive,
+machine-readable schemas are available from `/docs` and `/openapi.json`.
+
+### Existing KYC routes
 
 ```text
 POST /api/v1/kyc/session
+GET  /api/v1/kyc/{session_id}
+GET  /api/v1/kyc/{session_id}/status
 POST /api/v1/kyc/{session_id}/document
 POST /api/v1/kyc/{session_id}/selfie
 POST /api/v1/kyc/{session_id}/address
+POST /api/v1/kyc/{session_id}/address/upload
 POST /api/v1/kyc/{session_id}/submit
-GET  /api/v1/kyc/{session_id}
 ```
+
+KYC remains an in-memory prototype only. Existing request/response shapes and
+offline Flutter fallback behavior are unchanged.
+
+### Customer and product routes
+
+```text
+GET    /api/v1/customer/me
+GET    /api/v1/customer/dashboard
+GET    /api/v1/cards
+GET    /api/v1/cards/{card_id}
+POST   /api/v1/cards/{card_id}/freeze
+POST   /api/v1/cards/{card_id}/unfreeze
+PATCH  /api/v1/cards/{card_id}/controls
+POST   /api/v1/cards/virtual
+GET    /api/v1/transactions
+GET    /api/v1/transactions/{transaction_id}
+POST   /api/v1/transactions/simulate
+GET    /api/v1/fraud
+POST   /api/v1/fraud/{alert_id}/resolve
+GET    /api/v1/disputes
+POST   /api/v1/disputes
+GET    /api/v1/rewards
+```
+
+`GET /api/v1/customer/me` returns the selected synthetic customer. The dashboard
+returns `{ "customer", "cards", "recent_transactions", "open_fraud_alerts",
+"rewards" }`. Collection endpoints return JSON arrays. Card status is
+`active`, `frozen`, or `closed`; control updates accept any non-empty subset of
+`daily_limit` (INR, 1,000–250,000), `international_enabled`,
+`contactless_enabled`, `online_enabled`, and `atm_enabled`. Virtual-card creation
+accepts an optional `nickname` and `daily_limit`; it returns HTTP 201.
+
+Authorization accepts this JSON body (`amount` is a positive INR demo amount;
+`channel` is `ONLINE`, `POS`, or `ATM`):
+
+```json
+{
+  "card_id": "CARD-001",
+  "merchant": "Demo Market",
+  "amount": 4500,
+  "country": "IN",
+  "channel": "ONLINE"
+}
+```
+
+The response contains `decision` (`APPROVED`, `DECLINED`, or `FLAGGED`),
+`authorization_id`, `reasons`, and `rule_results`. Declines cover inactive or
+frozen cards, amounts over the card's daily limit, and foreign usage when
+international transactions are disabled. High-value foreign attempts at or
+above INR 7,500 are marked for review when not hard-declined and create a fraud
+alert. Each simulated authorization is also added to the transaction feed.
+Disabling the online or ATM card control declines the matching `ONLINE` or
+`ATM` channel; `POS` remains available because the request does not indicate
+contactless use.
+
+Dispute creation accepts `transaction_id`, `reason`, and optional `details`;
+declined transactions cannot be disputed. Fraud resolution has no request body
+and marks the named alert resolved. Missing resources return HTTP 404 and
+invalid request data returns HTTP 422.
+
+All product data is fictional, seeded deterministically at process start, and
+stored only in memory. Mutations reset on backend restart. These APIs do not
+move money, issue real cards, contact financial services, or verify real
+identities.
 
 ## Two-day plan
 
