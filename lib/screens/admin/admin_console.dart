@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
+
 import '../../core/theme/app_theme.dart';
+import '../../repositories/product_repositories.dart';
+import '../../services/api/gemcards_api_client.dart';
+import '../../services/demo_product_service.dart';
 
 class AdminConsoleScreen extends StatefulWidget {
-  const AdminConsoleScreen({super.key});
+  const AdminConsoleScreen({super.key, this.repository});
+  final AdminRepository? repository;
   @override
   State<AdminConsoleScreen> createState() => _AdminConsoleScreenState();
 }
 
 class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   int tab = 0;
-  bool frozen = false;
+  late final AdminRepository repository =
+      widget.repository ??
+      AdminRepository(GemcardsApiClient(), DemoProductRepository());
+  late Future<_AdminData> _data = _loadData();
+  _AdminData? _loaded;
   final labels = const [
     'Overview',
     'Customers',
@@ -20,6 +29,26 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     'Disputes',
     'Reports',
   ];
+
+  Future<_AdminData> _loadData() async {
+    final responses = await Future.wait<Object>([
+      repository.getMetrics(),
+      repository.getCustomers(),
+      repository.getCards(),
+      repository.getTransactions(),
+      repository.getFraud(),
+      repository.getDisputes(),
+    ]);
+    return _AdminData(
+      metrics: responses[0] as Map<String, dynamic>,
+      customers: responses[1] as List<Map<String, dynamic>>,
+      cards: responses[2] as List<Map<String, dynamic>>,
+      transactions: responses[3] as List<Map<String, dynamic>>,
+      fraud: responses[4] as List<Map<String, dynamic>>,
+      disputes: responses[5] as List<Map<String, dynamic>>,
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -34,63 +63,91 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
         ),
       ],
     ),
-    body: LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 760) {
-          return Column(
-            children: [
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: Row(
-                  children: [
-                    for (var index = 0; index < labels.length; index++) ...[
-                      if (index > 0) const SizedBox(width: 8),
-                      ChoiceChip(
-                        avatar: Icon(_icon(labels[index]), size: 17),
-                        label: Text(labels[index]),
-                        selected: tab == index,
-                        onSelected: (_) => setState(() => tab = index),
-                      ),
-                    ],
-                  ],
+    body: FutureBuilder<_AdminData>(
+      future: _data,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Operations data unavailable'),
+                TextButton.icon(
+                  onPressed: () => setState(() => _data = _loadData()),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Try again'),
                 ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: _body(),
-                ),
-              ),
-            ],
+              ],
+            ),
           );
         }
-        return Row(
-          children: [
-            NavigationRail(
-              selectedIndex: tab,
-              labelType: NavigationRailLabelType.all,
-              onDestinationSelected: (value) => setState(() => tab = value),
-              destinations: labels
-                  .map(
-                    (label) => NavigationRailDestination(
-                      icon: Icon(_icon(label)),
-                      label: Text(label),
+        _loaded = snapshot.requireData;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 760) {
+              return Column(
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: Row(
+                      children: [
+                        for (var index = 0; index < labels.length; index++) ...[
+                          if (index > 0) const SizedBox(width: 8),
+                          ChoiceChip(
+                            avatar: Icon(_icon(labels[index]), size: 17),
+                            label: Text(labels[index]),
+                            selected: tab == index,
+                            onSelected: (_) => setState(() => tab = index),
+                          ),
+                        ],
+                      ],
                     ),
-                  )
-                  .toList(),
-            ),
-            const VerticalDivider(width: 1),
-            Expanded(
-              child: Padding(padding: const EdgeInsets.all(28), child: _body()),
-            ),
-          ],
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: _body(),
+                    ),
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: tab,
+                  labelType: NavigationRailLabelType.all,
+                  onDestinationSelected: (value) => setState(() => tab = value),
+                  destinations: labels
+                      .map(
+                        (label) => NavigationRailDestination(
+                          icon: Icon(_icon(label)),
+                          label: Text(label),
+                        ),
+                      )
+                      .toList(),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(28),
+                    child: _body(),
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
     ),
   );
   Widget _body() {
+    final data = _loaded!;
     if (tab == 0) {
       return _page(
         'Portfolio overview',
@@ -111,15 +168,15 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                   spacing: gap,
                   runSpacing: gap,
                   children: [
-                    for (final item in const [
-                      _Kpi('12,480', 'Total customers'),
-                      _Kpi('18,340', 'Active cards'),
-                      _Kpi('918', 'Transactions today'),
-                      _Kpi('₹12.8L', 'Transaction volume'),
-                      _Kpi('24', 'Pending KYC'),
-                      _Kpi('1', 'Fraud alert'),
-                      _Kpi('1', 'Open disputes'),
-                      _Kpi('42', 'Cards issued today'),
+                    for (final item in [
+                      _Kpi(_metric('total_customers'), 'Total customers'),
+                      _Kpi(_metric('active_cards'), 'Active cards'),
+                      _Kpi(_metric('transactions_today'), 'Transactions today'),
+                      _Kpi(_volume(), 'Transaction volume'),
+                      _Kpi(_metric('pending_kyc'), 'Pending KYC'),
+                      _Kpi(_metric('fraud_alerts'), 'Fraud alerts'),
+                      _Kpi(_metric('open_disputes'), 'Open disputes'),
+                      _Kpi(_metric('cards_issued_today'), 'Cards issued today'),
                     ])
                       SizedBox(width: width, child: item),
                   ],
@@ -129,16 +186,23 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
             const SizedBox(height: 24),
             const _Chart(),
             const SizedBox(height: 16),
-            _surface(
-              const ListTile(
-                leading: Icon(
-                  Icons.warning_amber_rounded,
-                  color: AppTheme.error,
+            if (data.fraud.isNotEmpty)
+              _surface(
+                ListTile(
+                  leading: const Icon(
+                    Icons.warning_amber_rounded,
+                    color: AppTheme.error,
+                  ),
+                  title: Text(
+                    data.fraud.first['reason']?.toString() ?? 'Fraud signal',
+                  ),
+                  subtitle: Text(
+                    '${data.fraud.first['customer'] ?? data.fraud.first['customer_id'] ?? 'Demo customer'} · '
+                    '${data.fraud.first['country'] ?? data.fraud.first['location'] ?? ''} · '
+                    '₹${data.fraud.first['amount'] ?? 0}',
+                  ),
                 ),
-                title: Text('High-risk transaction requires review'),
-                subtitle: Text('Priya Shah · Singapore · ₹9,800 · score 91'),
               ),
-            ),
           ],
         ),
       );
@@ -147,39 +211,45 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       return _queue(
         'Customers',
         'Name · ID · KYC · cards · transactions · risk',
-        const [
-          'Alex Morgan · CUS-DEMO-001 · Verified · 2 cards · 18 transactions · Low risk',
-          'Priya Shah · CUS-DEMO-002 · Under review · 1 card · 7 transactions · Medium risk',
-          'Jordan Lee · CUS-DEMO-003 · Pending · 0 cards · 0 transactions · Low risk',
-        ],
+        data.customers
+            .map(
+              (item) =>
+                  '${item['name']} · ${item['id']} · ${item['kyc_status']} · '
+                  '${item['cards'] ?? 0} cards · ${item['transactions'] ?? 0} transactions · '
+                  '${item['risk'] ?? 'demo'} risk',
+            )
+            .toList(),
       );
     }
     if (tab == 2) {
-      return _cards();
+      return _cards(data.cards);
     }
     if (tab == 3) {
       return _queue(
         'Transaction operations',
         'Merchant · customer · card · timestamp · status · risk',
-        const [
-          'Metro Mart · Alex Morgan · •••• 4821 · 10:42 · ₹1,240 · Approved · risk 8',
-          'CloudStream · Alex Morgan · •••• 4821 · 20:11 · ₹299 · Approved · risk 4',
-          'Northstar Electronics · Priya Shah · •••• 7730 · 08:16 · ₹9,800 · Declined · risk 91',
-        ],
+        data.transactions
+            .map(
+              (item) =>
+                  '${item['merchant']} · ${item['customer'] ?? item['card_id'] ?? ''} · '
+                  '${item['timestamp'] ?? item['occurred_at'] ?? ''} · '
+                  '₹${item['amount'] ?? 0} · ${item['status'] ?? item['decision']}',
+            )
+            .toList(),
       );
     }
     if (tab == 4) {
       return _page(
         'Authorization simulator',
         'Deterministic card-status, limit and international rules',
-        _Simulator(frozen: frozen),
+        _Simulator(repository: repository),
       );
     }
     if (tab == 5) {
-      return _fraud();
+      return _fraud(data.fraud);
     }
     if (tab == 6) {
-      return _disputes();
+      return _disputes(data.disputes);
     }
     return _queue('Reports', 'Concise synthetic portfolio reporting', const [
       'Card issuance · 42 cards issued today',
@@ -234,117 +304,117 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       ],
     ),
   );
-  Widget _cards() => _page(
+  String _metric(String name) => (_loaded!.metrics[name] ?? 0).toString();
+
+  String _volume() {
+    final volume = _loaded!.metrics['transaction_volume'];
+    if (volume is num) return '₹${(volume / 100000).toStringAsFixed(1)}L';
+    return '₹0';
+  }
+
+  Widget _cards(List<Map<String, dynamic>> cards) => _page(
     'Card management',
     'Masked cards, lifecycle, controls and limits',
     ListView(
       children: [
-        _surface(
-          ListTile(
-            leading: const Icon(Icons.credit_card_rounded),
-            title: const Text('•••• 4821 · GEMCARDS Platinum'),
-            subtitle: Text(
-              frozen
-                  ? 'Alex Morgan · Visa · Frozen · ₹50,000 limit'
-                  : 'Alex Morgan · Visa · Active · ₹50,000 limit',
-            ),
-            trailing: FilledButton(
-              onPressed: () => setState(() => frozen = !frozen),
-              child: Text(frozen ? 'Unfreeze' : 'Freeze'),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _surface(
-          const ListTile(
-            title: Text('•••• 9104 · GEM Virtual'),
-            subtitle: Text('Alex Morgan · Visa · Active · Expiry 09/30'),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _surface(
-          const ListTile(
-            title: Text('•••• 7730 · GEM Classic'),
-            subtitle: Text('Priya Shah · RuPay · Frozen · Expiry 10/30'),
-          ),
-        ),
+        if (cards.isEmpty)
+          const ListTile(title: Text('No cards in the demo portfolio.'))
+        else
+          ...cards.map((card) {
+            final frozen = card['status'] == 'frozen';
+            final cardId = card['id']?.toString() ?? '';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _surface(
+                ListTile(
+                  leading: const Icon(Icons.credit_card_rounded),
+                  title: Text(
+                    '${card['masked_number'] ?? ''} · ${card['product'] ?? 'GEM card'}',
+                  ),
+                  subtitle: Text(
+                    '${card['customer'] ?? 'Demo customer'} · '
+                    '${card['network'] ?? ''} · ${card['status']} · '
+                    '₹${card['limit'] ?? card['daily_limit'] ?? 0} limit',
+                  ),
+                  trailing: FilledButton(
+                    onPressed: cardId.isEmpty
+                        ? null
+                        : () async {
+                            try {
+                              await repository.setCardFrozen(
+                                cardId,
+                                frozen: !frozen,
+                              );
+                              if (mounted) {
+                                setState(() => _data = _loadData());
+                              }
+                            } on GemcardsApiException catch (error) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(error.message)),
+                                );
+                              }
+                            }
+                          },
+                    child: Text(frozen ? 'Unfreeze' : 'Freeze'),
+                  ),
+                ),
+              ),
+            );
+          }),
       ],
     ),
   );
-  Widget _fraud() => _page(
+  Widget _fraud(List<Map<String, dynamic>> alerts) => _page(
     'Fraud & risk',
     'Signals prioritized for operations decisions',
-    ListView(
-      children: [
-        _surface(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    alerts.isEmpty
+        ? const Center(child: Text('No fraud alerts to review.'))
+        : ListView(
             children: [
-              const Text(
-                'Large foreign purchase on a frozen card',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              const Text('Priya Shah · Singapore · ₹9,800 · Risk score 91'),
-              const SizedBox(height: 12),
-              const Text(
-                'Why flagged: high-value foreign attempt after the card was frozen.',
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                children: [
-                  OutlinedButton(
-                    onPressed: () {},
-                    child: const Text('Block card'),
+              for (final alert in alerts)
+                _surface(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        alert['reason']?.toString() ?? 'Fraud signal',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${alert['customer'] ?? alert['customer_id'] ?? 'Demo customer'} · '
+                        '${alert['country'] ?? alert['location'] ?? ''} · '
+                        '₹${alert['amount'] ?? 0} · ${alert['severity'] ?? ''}',
+                      ),
+                      const SizedBox(height: 12),
+                      Text('Status: ${alert['status'] ?? 'open'}'),
+                    ],
                   ),
-                  OutlinedButton(
-                    onPressed: () {},
-                    child: const Text('Dismiss'),
-                  ),
-                  FilledButton(
-                    onPressed: () {},
-                    child: const Text('Mark investigating'),
-                  ),
-                ],
-              ),
+                ),
             ],
           ),
-        ),
-      ],
-    ),
   );
-  Widget _disputes() => _page(
+  Widget _disputes(List<Map<String, dynamic>> disputes) => _page(
     'Disputes',
-    'Status and timeline simulation',
-    ListView(
-      children: [
-        _surface(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    'Status and timeline from the GEMCARDS demo service',
+    disputes.isEmpty
+        ? const Center(child: Text('No disputes to review.'))
+        : ListView(
             children: [
-              const Text(
-                'DSP-01 · Merchant recognition',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              const Text('TXN-101 · Alex Morgan · Open · 09 Oct 2026'),
-              const Divider(height: 24),
-              const Text(
-                'Timeline: opened by customer → awaiting operations review',
-              ),
-              DropdownButtonFormField<String>(
-                initialValue: 'Open',
-                items: const ['Open', 'Investigating', 'Resolved']
-                    .map((x) => DropdownMenuItem(value: x, child: Text(x)))
-                    .toList(),
-                onChanged: (_) {},
-              ),
+              for (final dispute in disputes)
+                _surface(
+                  ListTile(
+                    title: Text(
+                      '${dispute['id']} · ${dispute['reason'] ?? 'Dispute'}',
+                    ),
+                    subtitle: Text(
+                      '${dispute['transaction_id'] ?? ''} · ${dispute['status'] ?? 'open'}',
+                    ),
+                  ),
+                ),
             ],
           ),
-        ),
-      ],
-    ),
   );
   Widget _surface(Widget child) => Container(
     padding: const EdgeInsets.all(16),
@@ -373,8 +443,8 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
 }
 
 class _Simulator extends StatefulWidget {
-  const _Simulator({required this.frozen});
-  final bool frozen;
+  const _Simulator({required this.repository});
+  final AdminRepository repository;
   @override
   State<_Simulator> createState() => _SimulatorState();
 }
@@ -382,7 +452,8 @@ class _Simulator extends StatefulWidget {
 class _SimulatorState extends State<_Simulator> {
   final amount = TextEditingController(text: '1200');
   String country = 'India';
-  String? decision;
+  bool _busy = false;
+  Map<String, dynamic>? _result;
   String? inputError;
 
   @override
@@ -424,27 +495,39 @@ class _SimulatorState extends State<_Simulator> {
       ),
       const SizedBox(height: 14),
       FilledButton.icon(
-        onPressed: () {
-          final parsedAmount = double.tryParse(amount.text);
-          if (parsedAmount == null || parsedAmount <= 0) {
-            setState(() {
-              inputError = 'Enter a valid amount greater than zero.';
-              decision = null;
-            });
-            return;
-          }
-          setState(() {
-            inputError = null;
-            decision =
-                widget.frozen || parsedAmount > 50000 || country != 'India'
-                ? 'DECLINED'
-                : 'APPROVED';
-          });
-        },
+        onPressed: _busy
+            ? null
+            : () async {
+                final parsedAmount = double.tryParse(amount.text);
+                if (parsedAmount == null || parsedAmount <= 0) {
+                  setState(() {
+                    inputError = 'Enter a valid amount greater than zero.';
+                    _result = null;
+                  });
+                  return;
+                }
+                setState(() {
+                  inputError = null;
+                  _busy = true;
+                });
+                try {
+                  final result = await widget.repository.simulateAuthorization(
+                    cardId: 'CARD-001',
+                    merchant: 'GEM Demo Merchant',
+                    amount: parsedAmount,
+                    country: country,
+                  );
+                  if (mounted) setState(() => _result = result);
+                } on GemcardsApiException catch (error) {
+                  if (mounted) setState(() => inputError = error.message);
+                } finally {
+                  if (mounted) setState(() => _busy = false);
+                }
+              },
         icon: const Icon(Icons.play_arrow),
-        label: const Text('Simulate authorization'),
+        label: Text(_busy ? 'Checking rules…' : 'Simulate authorization'),
       ),
-      if (decision != null)
+      if (_result != null)
         Padding(
           padding: const EdgeInsets.only(top: 16),
           child: Card(
@@ -454,27 +537,28 @@ class _SimulatorState extends State<_Simulator> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    decision!,
+                    _result!['decision']?.toString() ?? 'NO DECISION',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
-                  const Text('AUTH-DEMO-4821'),
+                  Text(
+                    _result!['authorization_id']?.toString() ?? 'Offline demo',
+                  ),
                   const Divider(),
                   Text(
-                    widget.frozen
-                        ? 'Card status: failed'
-                        : 'Card status: passed',
+                    _result!['explanation']?.toString() ??
+                        'No funds were moved.',
                   ),
-                  Text(
-                    (double.tryParse(amount.text) ?? 0) > 50000
-                        ? 'Spending limit: failed'
-                        : 'Spending limit: passed',
-                  ),
-                  Text(
-                    country == 'India'
-                        ? 'International controls: passed'
-                        : 'International controls: failed',
-                  ),
+                  for (final rule
+                      in (_result!['rules'] as List<dynamic>? ??
+                          _result!['rule_results'] as List<dynamic>? ??
+                          const []))
+                    if (rule is Map<String, dynamic>)
+                      Text(
+                        '${rule['rule'] ?? rule['name']}: '
+                        '${rule['passed'] == true ? 'passed' : 'failed'} · '
+                        '${rule['detail'] ?? rule['explanation'] ?? ''}',
+                      ),
                 ],
               ),
             ),
@@ -482,6 +566,24 @@ class _SimulatorState extends State<_Simulator> {
         ),
     ],
   );
+}
+
+class _AdminData {
+  const _AdminData({
+    required this.metrics,
+    required this.customers,
+    required this.cards,
+    required this.transactions,
+    required this.fraud,
+    required this.disputes,
+  });
+
+  final Map<String, dynamic> metrics;
+  final List<Map<String, dynamic>> customers;
+  final List<Map<String, dynamic>> cards;
+  final List<Map<String, dynamic>> transactions;
+  final List<Map<String, dynamic>> fraud;
+  final List<Map<String, dynamic>> disputes;
 }
 
 class _Kpi extends StatelessWidget {

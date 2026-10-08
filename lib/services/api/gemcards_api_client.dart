@@ -1,0 +1,252 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+class GemcardsApiException implements Exception {
+  const GemcardsApiException(
+    this.message, {
+    this.statusCode,
+    this.allowOfflineFallback = false,
+  });
+
+  final String message;
+  final int? statusCode;
+  final bool allowOfflineFallback;
+
+  @override
+  String toString() => message;
+}
+
+class GemcardsApiClient {
+  GemcardsApiClient({
+    http.Client? httpClient,
+    String? baseUrl,
+    this.timeout = const Duration(seconds: 2),
+  }) : _httpClient = httpClient ?? http.Client(),
+       baseUrl =
+           (baseUrl ??
+                   const String.fromEnvironment(
+                     'API_BASE_URL',
+                     defaultValue: 'http://10.0.2.2:8000',
+                   ))
+               .replaceFirst(RegExp(r'/+$'), '');
+
+  final http.Client _httpClient;
+  final String baseUrl;
+  final Duration timeout;
+
+  Future<Map<String, dynamic>> customer() => _getMap('/api/v1/customer/me');
+
+  Future<Map<String, dynamic>> dashboard() =>
+      _getMap('/api/v1/customer/dashboard');
+
+  Future<List<Map<String, dynamic>>> cards() => getList('/api/v1/cards');
+
+  Future<Map<String, dynamic>> card(String id) =>
+      _getMap('/api/v1/cards/${Uri.encodeComponent(id)}');
+
+  Future<Map<String, dynamic>> freezeCard(
+    String id, {
+    required bool frozen,
+  }) => _postMap(
+    '/api/v1/cards/${Uri.encodeComponent(id)}/${frozen ? 'freeze' : 'unfreeze'}',
+  );
+
+  Future<Map<String, dynamic>> updateCardControls(
+    String id,
+    Map<String, Object> controls,
+  ) => _patchMap('/api/v1/cards/${Uri.encodeComponent(id)}/controls', controls);
+
+  Future<Map<String, dynamic>> createVirtualCard() => _postMap(
+    '/api/v1/cards/virtual',
+    {'nickname': 'GEM Virtual', 'daily_limit': 25000},
+  );
+
+  Future<List<Map<String, dynamic>>> transactions() =>
+      getList('/api/v1/transactions');
+
+  Future<Map<String, dynamic>> transaction(String id) =>
+      _getMap('/api/v1/transactions/${Uri.encodeComponent(id)}');
+
+  Future<Map<String, dynamic>> simulateAuthorization({
+    required String cardId,
+    required String merchant,
+    required double amount,
+    required String country,
+    required String channel,
+  }) => _postMap('/api/v1/transactions/simulate', {
+    'card_id': cardId,
+    'merchant': merchant,
+    'amount': amount,
+    'country': country,
+    'channel': channel,
+  });
+
+  Future<Map<String, dynamic>> rewards() => _getMap('/api/v1/rewards');
+
+  Future<List<Map<String, dynamic>>> fraud() => getList('/api/v1/fraud');
+
+  Future<List<Map<String, dynamic>>> disputes() => getList('/api/v1/disputes');
+
+  Future<Map<String, dynamic>> createDispute({
+    required String transactionId,
+    required String reason,
+    String details = '',
+  }) => _postMap('/api/v1/disputes', {
+    'transaction_id': transactionId,
+    'reason': reason,
+    'details': details,
+  });
+
+  Future<Map<String, dynamic>> adminMetrics() =>
+      _getMap('/api/v1/admin/metrics');
+
+  Future<List<Map<String, dynamic>>> adminCustomers() =>
+      getList('/api/v1/admin/customers');
+
+  Future<List<Map<String, dynamic>>> adminCards() =>
+      getList('/api/v1/admin/cards');
+
+  Future<List<Map<String, dynamic>>> adminTransactions() =>
+      getList('/api/v1/admin/transactions');
+
+  Future<List<Map<String, dynamic>>> adminFraud() =>
+      getList('/api/v1/admin/fraud');
+
+  Future<List<Map<String, dynamic>>> adminDisputes() =>
+      getList('/api/v1/admin/disputes');
+
+  Future<Map<String, dynamic>> adminFreezeCard(
+    String id, {
+    required bool frozen,
+  }) => _postMap(
+    '/api/v1/admin/cards/${Uri.encodeComponent(id)}/${frozen ? 'freeze' : 'unfreeze'}',
+  );
+
+  Future<Map<String, dynamic>> adminSimulateAuthorization({
+    required String cardId,
+    required String merchant,
+    required double amount,
+    required String country,
+  }) => simulateAuthorization(
+    cardId: cardId,
+    merchant: merchant,
+    amount: amount,
+    country: country,
+    channel: 'ONLINE',
+  );
+
+  Future<Map<String, dynamic>> _getMap(String path) async {
+    final response = await _send(() => _httpClient.get(_uri(path)));
+    return _decodeMap(response);
+  }
+
+  Future<List<Map<String, dynamic>>> getList(String path) async {
+    final response = await _send(() => _httpClient.get(_uri(path)));
+    final decoded = _decode(response);
+    if (decoded is! List<dynamic>) {
+      throw const GemcardsApiException('The server returned an invalid list.');
+    }
+    return decoded.map((item) {
+      if (item is! Map<String, dynamic>) {
+        throw const GemcardsApiException(
+          'The server returned an invalid list item.',
+        );
+      }
+      return item;
+    }).toList();
+  }
+
+  Future<Map<String, dynamic>> _postMap(
+    String path, [
+    Map<String, Object>? body,
+  ]) async {
+    final response = await _send(
+      () => _httpClient.post(
+        _uri(path),
+        headers: {'content-type': 'application/json'},
+        body: body == null ? null : jsonEncode(body),
+      ),
+    );
+    return _decodeMap(response);
+  }
+
+  Future<Map<String, dynamic>> _patchMap(
+    String path,
+    Map<String, Object> body,
+  ) async {
+    final response = await _send(
+      () => _httpClient.patch(
+        _uri(path),
+        headers: {'content-type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    return _decodeMap(response);
+  }
+
+  Future<http.Response> _send(Future<http.Response> Function() request) async {
+    try {
+      final response = await request().timeout(timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        var message = 'Request failed (${response.statusCode}).';
+        try {
+          final body = jsonDecode(response.body);
+          if (body is Map<String, dynamic> && body['detail'] is String) {
+            message = body['detail'] as String;
+          }
+        } on FormatException {
+          // Keep the useful HTTP status when the server body is not JSON.
+        }
+        throw GemcardsApiException(
+          message,
+          statusCode: response.statusCode,
+          allowOfflineFallback: response.statusCode >= 500,
+        );
+      }
+      return response;
+    } on GemcardsApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const GemcardsApiException(
+        'The GEMCARDS service timed out.',
+        allowOfflineFallback: true,
+      );
+    } on http.ClientException catch (error) {
+      throw GemcardsApiException(
+        'Could not connect to GEMCARDS: $error',
+        allowOfflineFallback: true,
+      );
+    } on Exception catch (error) {
+      throw GemcardsApiException(
+        'Could not connect to GEMCARDS: $error',
+        allowOfflineFallback: true,
+      );
+    }
+  }
+
+  Uri _uri(String path) => Uri.parse('$baseUrl$path');
+
+  Object? _decode(http.Response response) {
+    try {
+      return jsonDecode(response.body);
+    } on FormatException {
+      throw const GemcardsApiException(
+        'The GEMCARDS service returned invalid JSON.',
+      );
+    }
+  }
+
+  Map<String, dynamic> _decodeMap(http.Response response) {
+    final decoded = _decode(response);
+    if (decoded is! Map<String, dynamic>) {
+      throw const GemcardsApiException(
+        'The server returned an invalid object.',
+      );
+    }
+    return decoded;
+  }
+
+  void close() => _httpClient.close();
+}

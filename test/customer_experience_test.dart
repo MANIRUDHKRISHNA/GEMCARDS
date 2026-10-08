@@ -13,7 +13,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
-      const MaterialApp(home: CustomerExperienceScreen()),
+      MaterialApp(
+        home: CustomerExperienceScreen(repository: DemoProductRepository()),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.text('Available balance'), findsOneWidget);
@@ -21,6 +23,9 @@ void main() {
     await tester.tap(find.text('Cards'));
     await tester.pumpAndSettle();
     expect(find.text('My cards'), findsOneWidget);
+    await tester.drag(find.byType(ListView).last, const Offset(0, -400));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Online payments'));
     expect(find.text('Online payments'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -84,6 +89,7 @@ void main() {
     await tester.drag(find.byType(ListView).last, const Offset(0, -600));
     await tester.pumpAndSettle();
     expect(find.text('View virtual card'), findsOneWidget);
+    await tester.ensureVisible(find.text('Freeze card'));
     await tester.tap(find.text('Freeze card'));
     await tester.pumpAndSettle();
     expect(find.text('View virtual card'), findsOneWidget);
@@ -95,7 +101,7 @@ void main() {
   });
 }
 
-class _StubProductRepository implements ProductRepository {
+class _StubProductRepository extends DemoProductRepository {
   _StubProductRepository({this.failFirstLoad = false, this.virtualCard = true});
 
   final bool failFirstLoad;
@@ -139,14 +145,5 @@ class _StubProductRepository implements ProductRepository {
   }
 
   @override
-  Future<List<Customer>> customers() async => const [];
-
-  @override
-  Future<List<Dispute>> disputes() async => const [];
-
-  @override
-  Future<TransactionStatus> authorize({
-    required double amount,
-    required String merchant,
-  }) async => TransactionStatus.approved;
+  Future<List<Card>> loadCards() async => (await loadCustomerSummary()).cards;
 }

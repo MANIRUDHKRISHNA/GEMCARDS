@@ -47,7 +47,11 @@ The FastAPI layer gives us:
 - a straightforward path to PostgreSQL
 - a separate boundary for OCR/face/liveness vendors
 
-The Flutter app currently defaults to a local/mock verification service so the UI can be developed without credentials or production KYC integrations.
+The customer experience launches on the product dashboard and reads customer,
+card, transaction, fraud, dispute, and reward data from the FastAPI demo. Typed
+repositories fall back to an in-memory local demo when the service cannot be
+reached. KYC stays in its existing verification flow and is opened from the
+customer's card-application journey.
 
 ## Important prototype boundaries
 
@@ -72,7 +76,11 @@ flutter test
 flutter run
 ```
 
-For an Android emulator that talks to the local FastAPI server, use `--dart-define=API_BASE_URL=http://10.0.2.2:8000`. The app continues to demonstrate its local flow when a provider is unavailable.
+For an Android emulator that talks to the local FastAPI server, use
+`--dart-define=API_BASE_URL=http://10.0.2.2:8000`. The default emulator URL is
+already `10.0.2.2:8000`; a web or desktop run should set `API_BASE_URL` to the
+host's reachable backend URL. If the service is unavailable, the product
+repositories provide clearly labeled local demo data.
 
 ## Run the FastAPI backend
 
@@ -195,6 +203,29 @@ All product data is fictional, seeded deterministically at process start, and
 stored only in memory. Mutations reset on backend restart. These APIs do not
 move money, issue real cards, contact financial services, or verify real
 identities.
+
+### Flutter integration
+
+`GemcardsApiClient` is the shared HTTP boundary. `CustomerRepository`,
+`CardRepository`, `TransactionRepository`, and `AdminRepository` decode backend
+responses into typed Flutter models. The customer dashboard reads `/customer/me`
+and `/customer/dashboard`; card controls and virtual-card creation use the card
+routes above; activity and details read the transaction routes; rewards,
+security activity, and disputes read their corresponding collections. Card
+authorization is sent to `POST /api/v1/transactions/simulate`; the UI renders
+the backend decision and rule results. The admin demo loads its portfolio,
+customer, card, transaction, fraud, and dispute views from the existing
+`/api/v1/admin/*` routes.
+
+If a request cannot reach the service or the service returns a server error,
+repositories use local deterministic demo data and mark the customer screen as
+offline demo mode. Client errors such as invalid card operations remain visible
+instead of being converted into successful mock results. The backend remains
+in-memory and is the authoritative source only while reachable.
+
+The balance display, rewards redemption, support content, masked virtual-card
+security details, and KYC/liveness outcomes are still demo-only because no
+corresponding production APIs or payment providers are part of this prototype.
 
 ## Two-day plan
 

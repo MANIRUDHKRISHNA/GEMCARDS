@@ -13,9 +13,10 @@ import 'package:gemcards_onboarding_prototype/screens/camera_capture_screen.dart
 import 'package:gemcards_onboarding_prototype/screens/kyc_flow_screen.dart';
 import 'package:gemcards_onboarding_prototype/screens/liveness_screen.dart';
 import 'package:gemcards_onboarding_prototype/repositories/kyc_repository.dart';
+import 'package:gemcards_onboarding_prototype/services/demo_product_service.dart';
 
 void main() {
-  testWidgets('shows the onboarding welcome screen without overflow', (
+  testWidgets('launches on the customer dashboard', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(320, 640);
@@ -23,11 +24,17 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const GemcardsApp());
+    await tester.pumpWidget(GemcardsApp(repository: DemoProductRepository()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Customer\nonboarding'), findsOneWidget);
-    expect(find.text('Begin onboarding'), findsOneWidget);
+    expect(find.text('Good morning, Alex'), findsOneWidget);
+    expect(find.text('Available balance'), findsOneWidget);
+    expect(find.textContaining('Complete application'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.textContaining('Complete application'));
+    await tester.tap(find.textContaining('Complete application'));
+    await tester.pumpAndSettle();
+    expect(find.text('Passport'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
