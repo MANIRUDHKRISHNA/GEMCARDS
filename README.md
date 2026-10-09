@@ -296,4 +296,4 @@ After the prototype is approved, the next architecture step should be a provider
 - encrypted object storage
 - PostgreSQL-backed KYC state machine
 
-Never place provider secrets, Aadhaar numbers, PAN numbers, biometric images, or real identity documents in the Git repository.
+
