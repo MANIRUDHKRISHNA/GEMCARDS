@@ -35,6 +35,18 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
 
   Future<DashboardSummary> _loadSummary() => _repository.loadCustomerSummary();
 
+  Future<void> _startKyc() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (_) => const KycFlowScreen()),
+    );
+    if (!mounted) return;
+    setState(() {
+      _summary = _loadSummary();
+      _cardsOverride = null;
+      _index = 0;
+    });
+  }
+
   bool _isFrozen(Card card) =>
       _frozenOverrides[card.id] ?? card.status == CardStatus.frozen;
 
@@ -203,11 +215,7 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
                     ),
                     const SizedBox(height: 12),
                     FilledButton(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const KycFlowScreen(),
-                        ),
-                      ),
+                      onPressed: _startKyc,
                       child: const Text('Complete application'),
                     ),
                   ],
@@ -232,9 +240,7 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
           frozen: _isFrozen(primaryCard),
           onCards: _openCards,
           onActivity: () => setState(() => _index = 2),
-          onApply: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const KycFlowScreen()),
-          ),
+          onApply: _startKyc,
           repository: _repository,
           isOffline: _repository.isOffline,
         ),
@@ -266,6 +272,7 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
               : (value) => _setFrozen(virtualCard!, value),
           repository: _repository,
           onCreateVirtual: _createVirtualCard,
+          onStartKyc: _startKyc,
         ),
       ];
       return Scaffold(
@@ -966,6 +973,7 @@ class _More extends StatelessWidget {
     required this.onVirtualFrozen,
     required this.repository,
     required this.onCreateVirtual,
+    required this.onStartKyc,
   });
   final DashboardSummary summary;
   final Card? virtualCard;
@@ -973,6 +981,7 @@ class _More extends StatelessWidget {
   final ValueChanged<bool>? onVirtualFrozen;
   final ProductRepository repository;
   final VoidCallback onCreateVirtual;
+  final VoidCallback onStartKyc;
   @override
   Widget build(BuildContext c) => SafeArea(
     child: ListView(
@@ -1048,7 +1057,10 @@ class _More extends StatelessWidget {
           onTap: () => Navigator.of(c).push(
             MaterialPageRoute(
               builder: (_) =>
-                  ApplicationStatusScreen(customer: summary.customer),
+                  ApplicationStatusScreen(
+                    customer: summary.customer,
+                    onStartKyc: onStartKyc,
+                  ),
             ),
           ),
         ),
@@ -1743,8 +1755,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 class ApplicationStatusScreen extends StatelessWidget {
-  const ApplicationStatusScreen({required this.customer, super.key});
+  const ApplicationStatusScreen({
+    required this.customer,
+    this.onStartKyc,
+    super.key,
+  });
+
   final Customer customer;
+  final VoidCallback? onStartKyc;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -1782,9 +1800,13 @@ class ApplicationStatusScreen extends StatelessWidget {
           ),
         ),
         FilledButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const KycFlowScreen()),
-          ),
+          onPressed:
+              onStartKyc ??
+              () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const KycFlowScreen(),
+                ),
+              ),
           icon: const Icon(Icons.verified_user_outlined),
           label: const Text('Continue identity verification'),
         ),

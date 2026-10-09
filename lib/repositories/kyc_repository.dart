@@ -1,5 +1,6 @@
 import '../models/kyc_state.dart';
 import '../services/api/gemcards_api_client.dart';
+import '../services/demo_customer_identity.dart';
 
 abstract class KycRepository {
   bool get isOffline;
@@ -94,6 +95,10 @@ class ResilientKycRepository implements KycRepository {
         throw const GemcardsApiException(
           'The service returned an invalid verification session.',
         );
+      }
+      final customerId = response['customer_id'];
+      if (customerId is String && customerId.isNotEmpty) {
+        await DemoCustomerIdentity.selectCustomer(customerId);
       }
       return id;
     },

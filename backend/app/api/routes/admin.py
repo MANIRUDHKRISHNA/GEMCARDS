@@ -264,6 +264,7 @@ def unfreeze(card_id: str) -> dict:
 def update_limit(card_id: str, payload: LimitUpdate) -> dict:
     card = store.get_card(card_id)
     card.daily_limit = payload.limit
+    store.save_entity("cards", card)
     store.record_audit_event(
         "CARD_LIMIT_UPDATED",
         customer_id=card.customer_id,

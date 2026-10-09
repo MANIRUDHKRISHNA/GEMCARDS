@@ -1,11 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.domain import store
 from app.schemas.domain import Dispute, DisputeCreate, DisputeStatus
 
 router = APIRouter(prefix="/api/v1/disputes", tags=["disputes"])
-_dispute_sequence = 1
 
 
 class DisputeStatusUpdate(BaseModel):
@@ -13,8 +12,15 @@ class DisputeStatusUpdate(BaseModel):
 
 
 @router.get("", response_model=list[Dispute])
-def list_disputes() -> list[Dispute]:
-    return list(store.disputes.values())
+def list_disputes(
+    customer_id: str | None = Query(default=None, min_length=1, max_length=40),
+) -> list[Dispute]:
+    selected_customer_id = customer_id or store.DEMO_CUSTOMER_ID
+    store.get_customer(selected_customer_id)
+    return [
+        dispute for dispute in store.disputes.values()
+        if dispute.customer_id == selected_customer_id
+    ]
 
 
 @router.post("/{dispute_id}/status", response_model=Dispute)
@@ -26,18 +32,24 @@ def update_dispute_status(
 
 
 @router.post("", response_model=Dispute, status_code=201)
-def create_dispute(payload: DisputeCreate) -> Dispute:
-    global _dispute_sequence
+def create_dispute(
+    payload: DisputeCreate,
+    customer_id: str | None = Query(default=None, min_length=1, max_length=40),
+) -> Dispute:
     transaction = store.get_transaction(payload.transaction_id)
     card = store.get_card(transaction.card_id)
+    selected_customer_id = customer_id or store.DEMO_CUSTOMER_ID
+    store.get_customer(selected_customer_id)
+    if card.customer_id != selected_customer_id:
+        raise HTTPException(status_code=404, detail="Transaction not found")
     if transaction.decision == "DECLINED":
         raise HTTPException(
             status_code=409,
             detail="A declined transaction cannot be disputed in this demo",
         )
-    _dispute_sequence += 1
+    sequence = store.next_sequence("dispute")
     dispute = Dispute(
-        id=f"DSP-DEMO-{_dispute_sequence:03d}",
+        id=f"DSP-DEMO-{sequence:03d}",
         transaction_id=transaction.id,
         customer_id=card.customer_id,
         reason=payload.reason,
@@ -45,6 +57,7 @@ def create_dispute(payload: DisputeCreate) -> Dispute:
         created_at=store.now_iso(),
     )
     store.disputes[dispute.id] = dispute
+    store.save_entity("disputes", dispute)
     store.record_audit_event(
         "DISPUTE_OPENED",
         customer_id=dispute.customer_id,

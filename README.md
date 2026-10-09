@@ -32,8 +32,7 @@ Build a convincing end-to-end KYC journey by the 10th, while keeping the archite
 
 - FastAPI
 - Pydantic
-- In-memory mock verification state for the prototype
-- SQLite/PostgreSQL can be introduced after the UX prototype is accepted
+- SQLite persistence for customer, KYC, application, and demo-domain state
 
 ## Why this backend approach?
 
@@ -79,8 +78,11 @@ flutter run
 For an Android emulator that talks to the local FastAPI server, use
 `--dart-define=API_BASE_URL=http://10.0.2.2:8000`. The default emulator URL is
 already `10.0.2.2:8000`; a web or desktop run should set `API_BASE_URL` to the
-host's reachable backend URL. If the service is unavailable, the product
-repositories provide clearly labeled local demo data.
+host's reachable backend URL. If `GEMCARDS_DEMO_CUSTOMER_ID` is changed on the
+backend, pass the same value as `--dart-define=DEMO_CUSTOMER_ID=...` for the
+initial customer selection. After onboarding, the app remembers its selected
+demo customer locally. If the service is unavailable, the product repositories
+provide clearly labeled local demo data.
 
 ## Run the FastAPI backend
 
@@ -91,6 +93,8 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+$env:GEMCARDS_DATABASE_PATH = ".\data\gemcards.sqlite3"
+$env:GEMCARDS_DEMO_CUSTOMER_ID = "CUS-DEMO-001"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -101,8 +105,16 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+export GEMCARDS_DATABASE_PATH=./data/gemcards.sqlite3
+export GEMCARDS_DEMO_CUSTOMER_ID=CUS-DEMO-001
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+The SQLite database is created automatically. By default it lives at
+`backend/data/gemcards.sqlite3`; set `GEMCARDS_DATABASE_PATH` to use another
+location. Seed demo records are inserted only into an empty database. Customer,
+KYC-session, application, card, and related demo mutations survive backend
+restarts. Keep this local prototype database out of source control.
 
 ## Android permissions
 
@@ -139,10 +151,14 @@ POST /api/v1/kyc/{session_id}/address/upload
 POST /api/v1/kyc/{session_id}/submit
 ```
 
-KYC remains an in-memory prototype only. Its existing request/response shapes
-are unchanged. Starting and submitting a session update the selected demo
-customer's application lifecycle to `kyc_in_progress` and `kyc_verified`;
-already active cards are not moved backwards.
+Starting a session without `customer_id` creates a unique synthetic customer,
+a linked card application, and a pending demo card. The session response
+includes `customer_id` and `application_id`. Supplying an existing customer ID
+continues to support the seeded demo flow. KYC document, selfie, address,
+declaration, and status fields are saved with their session; uploaded file
+contents are validated in memory and are not stored. Completing the simulated
+KYC flow advances the linked application and demo card. No provider performs
+real identity or liveness verification.
 
 ### Customer and product routes
 
@@ -168,9 +184,11 @@ GET    /api/v1/rewards
 `GET /api/v1/customer/me` returns the selected synthetic customer. The dashboard
 returns `{ "customer", "available_balance", "currency", "cards",
 "recent_transactions", "open_fraud_alerts", "rewards" }`. The balance is
-deterministic synthetic INR demo data. Collection endpoints return JSON arrays.
-The customer Flutter repository scopes card and transaction lists to the
-selected customer's card IDs even though the demo API has no authentication.
+deterministic synthetic INR demo data. Customer profile/dashboard routes and
+customer collection routes accept an optional `customer_id` query parameter
+and return data scoped to that customer. Collection endpoints return JSON
+arrays. Operations that address a card, alert, or dispute directly remain
+unauthenticated demo operations; the customer ID is not an access-control check.
 Card status is
 `active`, `frozen`, or `closed`; control updates accept any non-empty subset of
 `daily_limit` (INR, 1,000–250,000), `international_enabled`,
@@ -205,10 +223,17 @@ declined transactions cannot be disputed. Fraud resolution has no request body
 and marks the named alert resolved. Missing resources return HTTP 404 and
 invalid request data returns HTTP 422.
 
-All product data is fictional, seeded deterministically at process start, and
-stored only in memory. Mutations reset on backend restart. These APIs do not
-move money, issue real cards, contact financial services, or verify real
-identities.
+The customer identity selector is a **temporary demo selector, not
+authentication**. The app stores the active customer ID in device-local
+preferences after a KYC session starts, then sends it to customer endpoints as
+`customer_id`; a newly created applicant becomes the active demo selection.
+The backend defaults to `GEMCARDS_DEMO_CUSTOMER_ID` (the seeded demo customer
+unless configured otherwise). IDs can be changed or spoofed by a client, and
+must never be treated as authorization or used with real personal data.
+
+Seed data is synthetic and is inserted into an empty SQLite database. Mutations
+persist across backend restarts. These APIs do not move money, issue real cards,
+contact financial services, or verify real identities.
 
 ### Flutter integration
 

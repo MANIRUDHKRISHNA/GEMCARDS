@@ -11,9 +11,7 @@ from app.schemas.domain import (
     TransactionDecision,
 )
 
-_authorization_sequence = 0
-_transaction_sequence = 103
-_fraud_sequence = 1
+
 
 
 def is_foreign(country: str) -> bool:
@@ -112,13 +110,10 @@ def evaluate_authorization(
 def execute_authorization(
     request: AuthorizationRequest,
 ) -> AuthorizationResponse:
-    global _authorization_sequence, _transaction_sequence, _fraud_sequence
     card = store.get_card(request.card_id)
     decision, reasons, rule_results = evaluate_authorization(card, request)
-    _authorization_sequence += 1
-    _transaction_sequence += 1
-    authorization_id = f"AUTH-DEMO-{_authorization_sequence:04d}"
-    transaction_id = f"TXN-{_transaction_sequence:03d}"
+    authorization_id = f"AUTH-DEMO-{store.next_sequence('authorization'):04d}"
+    transaction_id = f"TXN-{store.next_sequence('transaction'):03d}"
     occurred_at = store.now_iso()
     transaction = Transaction(
         id=transaction_id,
@@ -134,6 +129,7 @@ def execute_authorization(
         reasons=reasons,
     )
     store.transactions[transaction.id] = transaction
+    store.save_entity("transactions", transaction)
     store.record_audit_event(
         f"TRANSACTION_{decision}",
         customer_id=card.customer_id,
@@ -144,8 +140,7 @@ def execute_authorization(
     )
 
     if is_foreign(request.country) and request.amount >= store.FRAUD_REVIEW_THRESHOLD:
-        _fraud_sequence += 1
-        alert_id = f"FRA-DEMO-{_fraud_sequence:03d}"
+        alert_id = f"FRA-DEMO-{store.next_sequence('fraud_alert'):03d}"
         severity = "high" if request.amount >= 15000 else "medium"
         alert = FraudAlert(
             id=alert_id,
@@ -159,6 +154,7 @@ def execute_authorization(
             created_at=occurred_at,
         )
         store.fraud_alerts[alert.id] = alert
+        store.save_entity("fraud_alerts", alert)
         store.record_audit_event(
             "FRAUD_ALERT_CREATED",
             customer_id=card.customer_id,

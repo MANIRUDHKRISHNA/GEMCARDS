@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.domain import store
 from app.schemas.domain import Customer, CustomerDashboard
@@ -29,16 +29,21 @@ def _customer_summary(customer_id: str) -> Customer:
 
 
 @router.get("/me", response_model=Customer)
-def customer_me() -> Customer:
-    return _customer_summary(store.DEMO_CUSTOMER_ID)
+def customer_me(
+    customer_id: str | None = Query(default=None, min_length=1, max_length=40),
+) -> Customer:
+    return _customer_summary(customer_id or store.DEMO_CUSTOMER_ID)
 
 
 @router.get("/dashboard", response_model=CustomerDashboard)
-def customer_dashboard() -> CustomerDashboard:
-    customer_id = store.DEMO_CUSTOMER_ID
+def customer_dashboard(
+    customer_id: str | None = Query(default=None, min_length=1, max_length=40),
+) -> CustomerDashboard:
+    customer_id = customer_id or store.DEMO_CUSTOMER_ID
+    store.get_customer(customer_id)
     return CustomerDashboard(
         customer=_customer_summary(customer_id),
-        available_balance=store.available_balances[customer_id],
+        available_balance=store.available_balances.get(customer_id, 0.0),
         cards=[card for card in store.cards.values() if card.customer_id == customer_id],
         recent_transactions=sorted(
             (

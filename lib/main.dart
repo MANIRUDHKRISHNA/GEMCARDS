@@ -4,10 +4,12 @@ import 'core/theme/app_theme.dart';
 import 'repositories/product_repositories.dart';
 import 'screens/customer/customer_experience.dart';
 import 'services/api/gemcards_api_client.dart';
+import 'services/demo_customer_identity.dart';
 import 'services/demo_product_service.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await DemoCustomerIdentity.initialize();
   runApp(const GemcardsApp());
 }
 

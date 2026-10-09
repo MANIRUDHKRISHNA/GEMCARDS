@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
+import '../demo_customer_identity.dart';
+
 class GemcardsApiException implements Exception {
   const GemcardsApiException(
     this.message, {
@@ -38,12 +40,14 @@ class GemcardsApiClient {
   final String baseUrl;
   final Duration timeout;
 
-  Future<Map<String, dynamic>> customer() => _getMap('/api/v1/customer/me');
+  Future<Map<String, dynamic>> customer() =>
+      _getMap(_customerPath('/api/v1/customer/me'));
 
   Future<Map<String, dynamic>> dashboard() =>
-      _getMap('/api/v1/customer/dashboard');
+      _getMap(_customerPath('/api/v1/customer/dashboard'));
 
-  Future<List<Map<String, dynamic>>> cards() => getList('/api/v1/cards');
+  Future<List<Map<String, dynamic>>> cards() =>
+      getList(_customerPath('/api/v1/cards'));
 
   Future<Map<String, dynamic>> card(String id) =>
       _getMap('/api/v1/cards/${Uri.encodeComponent(id)}');
@@ -61,15 +65,17 @@ class GemcardsApiClient {
   ) => _patchMap('/api/v1/cards/${Uri.encodeComponent(id)}/controls', controls);
 
   Future<Map<String, dynamic>> createVirtualCard() => _postMap(
-    '/api/v1/cards/virtual',
+    _customerPath('/api/v1/cards/virtual'),
     {'nickname': 'GEM Virtual', 'daily_limit': 25000},
   );
 
   Future<List<Map<String, dynamic>>> transactions() =>
-      getList('/api/v1/transactions');
+      getList(_customerPath('/api/v1/transactions'));
 
   Future<Map<String, dynamic>> transaction(String id) =>
-      _getMap('/api/v1/transactions/${Uri.encodeComponent(id)}');
+      _getMap(
+        _customerPath('/api/v1/transactions/${Uri.encodeComponent(id)}'),
+      );
 
   Future<Map<String, dynamic>> simulateAuthorization({
     required String cardId,
@@ -85,17 +91,20 @@ class GemcardsApiClient {
     'channel': channel,
   });
 
-  Future<Map<String, dynamic>> rewards() => _getMap('/api/v1/rewards');
+  Future<Map<String, dynamic>> rewards() =>
+      _getMap(_customerPath('/api/v1/rewards'));
 
-  Future<List<Map<String, dynamic>>> fraud() => getList('/api/v1/fraud');
+  Future<List<Map<String, dynamic>>> fraud() =>
+      getList(_customerPath('/api/v1/fraud'));
 
-  Future<List<Map<String, dynamic>>> disputes() => getList('/api/v1/disputes');
+  Future<List<Map<String, dynamic>>> disputes() =>
+      getList(_customerPath('/api/v1/disputes'));
 
   Future<Map<String, dynamic>> createDispute({
     required String transactionId,
     required String reason,
     String details = '',
-  }) => _postMap('/api/v1/disputes', {
+  }) => _postMap(_customerPath('/api/v1/disputes'), {
     'transaction_id': transactionId,
     'reason': reason,
     'details': details,
@@ -214,12 +223,14 @@ class GemcardsApiClient {
   Future<List<Map<String, dynamic>>> adminTransactions() =>
       getList('/api/v1/admin/transactions');
 
-  Future<List<Map<String, dynamic>>> adminFraud() => fraud();
+  Future<List<Map<String, dynamic>>> adminFraud() =>
+      getList('/api/v1/admin/fraud');
 
   Future<Map<String, dynamic>> adminResolveFraud(String id) =>
       _postMap('/api/v1/fraud/${Uri.encodeComponent(id)}/resolve');
 
-  Future<List<Map<String, dynamic>>> adminDisputes() => disputes();
+  Future<List<Map<String, dynamic>>> adminDisputes() =>
+      getList('/api/v1/admin/disputes');
 
   Future<Map<String, dynamic>> adminUpdateDisputeStatus(
     String id,
@@ -339,6 +350,18 @@ class GemcardsApiClient {
   }
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
+
+  String _customerPath(String path) {
+    final uri = Uri.parse(path);
+    return uri
+        .replace(
+          queryParameters: {
+            ...uri.queryParameters,
+            'customer_id': DemoCustomerIdentity.customerId,
+          },
+        )
+        .toString();
+  }
 
   Object? _decode(http.Response response) {
     try {

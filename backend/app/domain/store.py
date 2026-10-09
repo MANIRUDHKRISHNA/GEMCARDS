@@ -1,7 +1,12 @@
+import copy
+import os
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import HTTPException
+from pydantic import BaseModel
 
+from app.domain import database
 from app.schemas.domain import (
     AuditEvent,
     Card,
@@ -15,7 +20,7 @@ from app.schemas.domain import (
     Transaction,
 )
 
-DEMO_CUSTOMER_ID = "CUS-DEMO-001"
+DEMO_CUSTOMER_ID = os.getenv("GEMCARDS_DEMO_CUSTOMER_ID", "CUS-DEMO-001")
 FRAUD_REVIEW_THRESHOLD = 7500
 
 customers: dict[str, Customer] = {
@@ -178,9 +183,6 @@ disputes: dict[str, Dispute] = {
 
 card_applications: dict[str, CardApplication] = {}
 audit_events: list[AuditEvent] = []
-_audit_sequence = 0
-_application_sequence = 0
-
 CARD_TRANSITIONS: dict[CardStatus, set[CardStatus]] = {
     "pending": {"active"},
     "active": {"frozen", "replaced"},
@@ -188,6 +190,102 @@ CARD_TRANSITIONS: dict[CardStatus, set[CardStatus]] = {
     "replaced": {"closed"},
     "closed": set(),
 }
+
+
+def _serialized_state() -> dict[str, dict[str, dict[str, Any]]]:
+    return {
+        "customers": {key: value.model_dump() for key, value in customers.items()},
+        "cards": {key: value.model_dump() for key, value in cards.items()},
+        "transactions": {
+            key: value.model_dump() for key, value in transactions.items()
+        },
+        "fraud_alerts": {
+            key: value.model_dump() for key, value in fraud_alerts.items()
+        },
+        "disputes": {key: value.model_dump() for key, value in disputes.items()},
+        "card_applications": {
+            key: value.model_dump() for key, value in card_applications.items()
+        },
+        "audit_events": {value.id: value.model_dump() for value in audit_events},
+        "balances": {
+            key: {"id": key, "customer_id": key, "amount": amount}
+            for key, amount in available_balances.items()
+        },
+    }
+
+
+_seed_state = copy.deepcopy(_serialized_state())
+
+
+def reload_persistent_state() -> None:
+    state = {entity: database.load_entities(entity) for entity in _seed_state}
+    if not state["customers"]:
+        database.seed(_seed_state)
+        state = {entity: database.load_entities(entity) for entity in _seed_state}
+
+    model_types = {
+        "customers": Customer,
+        "cards": Card,
+        "transactions": Transaction,
+        "fraud_alerts": FraudAlert,
+        "disputes": Dispute,
+        "card_applications": CardApplication,
+    }
+    for entity, model_type in model_types.items():
+        globals()[entity] = {
+            record_id: model_type.model_validate(payload)
+            for record_id, payload in state[entity].items()
+        }
+    audit_events[:] = [
+        AuditEvent.model_validate(payload)
+        for payload in sorted(
+            state["audit_events"].values(),
+            key=lambda item: item["id"],
+        )
+    ]
+    available_balances.clear()
+    available_balances.update(
+        {
+            customer_id: float(payload["amount"])
+            for customer_id, payload in state["balances"].items()
+        }
+    )
+
+
+def configure_database(path: str | os.PathLike[str]) -> None:
+    database.configure(path)
+    reload_persistent_state()
+
+
+def next_sequence(name: str) -> int:
+    return database.next_sequence(name)
+
+
+def save_entity(entity: str, value: BaseModel | dict[str, Any]) -> None:
+    payload = value.model_dump() if isinstance(value, BaseModel) else value
+    if not isinstance(payload, dict):
+        raise TypeError(f"Unsupported value for persistent entity {entity}")
+    database.save_entity(entity, payload)
+
+
+def create_customer() -> Customer:
+    customer_id = f"CUS-{next_sequence('customer'):06d}"
+    customer = Customer(
+        id=customer_id,
+        name=f"Demo Applicant {customer_id[-6:]}",
+        email=f"{customer_id.lower()}@applicant.example.demo",
+        kyc_status="pending",
+        member_since=datetime.now(timezone.utc).date().isoformat(),
+        application_status="draft",
+    )
+    customers[customer.id] = customer
+    available_balances[customer.id] = 0.0
+    save_entity("customers", customer)
+    save_entity(
+        "balances",
+        {"id": customer.id, "customer_id": customer.id, "amount": 0.0},
+    )
+    return customer
 
 
 def now_iso() -> str:
@@ -204,10 +302,9 @@ def record_audit_event(
     details: dict[str, str | int | float | bool | None] | None = None,
     timestamp: str | None = None,
 ) -> AuditEvent:
-    global _audit_sequence
-    _audit_sequence += 1
+    sequence = next_sequence("audit_event")
     event = AuditEvent(
-        id=f"AUD-{_audit_sequence:06d}",
+        id=f"AUD-{sequence:06d}",
         event_type=event_type,
         timestamp=timestamp or now_iso(),
         customer_id=customer_id,
@@ -217,6 +314,7 @@ def record_audit_event(
         details=details or {},
     )
     audit_events.append(event)
+    save_entity("audit_events", event)
     return event
 
 
@@ -229,6 +327,7 @@ def transition_card(card_id: str, target_status: CardStatus) -> Card:
     if previous_status == "pending" and customer.kyc_status != "verified":
         raise ValueError("Pending cards require verified KYC before activation")
     card.status = target_status
+    save_entity("cards", card)
     event_type = {
         "active": "CARD_ISSUED" if previous_status == "pending" else "CARD_UNFROZEN",
         "frozen": "CARD_FROZEN",
@@ -246,11 +345,12 @@ def transition_card(card_id: str, target_status: CardStatus) -> Card:
             if application.card_id == card.id:
                 application.status = "card_active"
                 customer.application_status = "card_active"
+                save_entity("card_applications", application)
+                save_entity("customers", customer)
     return card
 
 
 def create_card_application(customer_id: str, product: str) -> CardApplication:
-    global _application_sequence
     customer = get_customer(customer_id)
     if any(
         application.customer_id == customer.id
@@ -261,21 +361,21 @@ def create_card_application(customer_id: str, product: str) -> CardApplication:
             status_code=409,
             detail="This customer already has an application in progress",
         )
-    _application_sequence += 1
+    application_sequence = next_sequence("card_application")
     while (
-        f"APP-{_application_sequence:04d}" in card_applications
-        or f"CARD-P{_application_sequence:03d}" in cards
+        f"APP-{application_sequence:04d}" in card_applications
+        or f"CARD-P{application_sequence:03d}" in cards
     ):
-        _application_sequence += 1
-    application_id = f"APP-{_application_sequence:04d}"
-    card_id = f"CARD-P{_application_sequence:03d}"
+        application_sequence = next_sequence("card_application")
+    application_id = f"APP-{application_sequence:04d}"
+    card_id = f"CARD-P{application_sequence:03d}"
     card = Card(
         id=card_id,
         customer_id=customer.id,
         product=product,
         card_type="physical",
         network="Visa",
-        masked_number=f"•••• {(_application_sequence + 7200) % 10000:04d}",
+        masked_number=f"•••• {(application_sequence + 7200) % 10000:04d}",
         expiry="09/30",
         status="pending",
         daily_limit=50000,
@@ -297,6 +397,9 @@ def create_card_application(customer_id: str, product: str) -> CardApplication:
     cards[card.id] = card
     card_applications[application.id] = application
     customer.application_status = application_status
+    save_entity("cards", card)
+    save_entity("card_applications", application)
+    save_entity("customers", customer)
     record_audit_event(
         "CARD_APPLICATION_CREATED",
         customer_id=customer.id,
@@ -327,13 +430,18 @@ def get_rewards(customer_id: str) -> RewardSummary:
 def complete_customer_kyc(customer_id: str) -> Customer:
     customer = get_customer(customer_id)
     customer.kyc_status = "verified"
+    save_entity("customers", customer)
     record_audit_event("KYC_VERIFIED", customer_id=customer.id)
     for application in card_applications.values():
         if application.customer_id == customer.id and application.status == "kyc_in_progress":
             application.status = "kyc_verified"
             customer.application_status = "kyc_verified"
+            save_entity("card_applications", application)
+            save_entity("customers", customer)
             application.status = "card_pending"
             customer.application_status = "card_pending"
+            save_entity("card_applications", application)
+            save_entity("customers", customer)
             record_audit_event(
                 "CARD_APPLICATION_STATUS_CHANGED",
                 customer_id=customer.id,
@@ -343,6 +451,8 @@ def complete_customer_kyc(customer_id: str) -> Customer:
             transition_card(application.card_id, "active")
             application.status = "card_active"
             customer.application_status = "card_active"
+            save_entity("card_applications", application)
+            save_entity("customers", customer)
             return customer
     customer.application_status = (
         "card_active"
@@ -352,6 +462,7 @@ def complete_customer_kyc(customer_id: str) -> Customer:
         )
         else "kyc_verified"
     )
+    save_entity("customers", customer)
     return customer
 
 
@@ -362,6 +473,7 @@ def resolve_fraud_alert(alert_id: str) -> FraudAlert:
     if alert.status == "open":
         alert.status = "resolved"
         alert.resolved_at = now_iso()
+        save_entity("fraud_alerts", alert)
         record_audit_event(
             "FRAUD_ALERT_RESOLVED",
             customer_id=alert.customer_id,
@@ -389,6 +501,7 @@ def transition_dispute(dispute_id: str, target_status: DisputeStatus) -> Dispute
             detail=f"Cannot transition dispute from {dispute.status} to {target_status}",
         )
     dispute.status = target_status
+    save_entity("disputes", dispute)
     if target_status == "resolved":
         record_audit_event(
             "DISPUTE_RESOLVED",
@@ -418,3 +531,7 @@ def get_customer(customer_id: str) -> Customer:
     if customer is None:
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
+
+
+database.initialize()
+reload_persistent_state()

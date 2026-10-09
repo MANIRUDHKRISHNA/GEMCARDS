@@ -2,9 +2,9 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.domain import store
+from app.domain import database, store
 
 router = APIRouter(prefix="/api/v1/kyc", tags=["kyc"])
 
@@ -12,11 +12,15 @@ router = APIRouter(prefix="/api/v1/kyc", tags=["kyc"])
 class SessionCreate(BaseModel):
     country: str = Field(min_length=2, max_length=80)
     document_type: Literal["Passport", "Driver's License", "National ID"]
-    customer_id: str = Field(
-        default=store.DEMO_CUSTOMER_ID,
-        min_length=1,
-        max_length=40,
-    )
+    customer_id: str | None = Field(default=None, min_length=1, max_length=40)
+
+    @field_validator("country")
+    @classmethod
+    def normalize_country(cls, country: str) -> str:
+        country = country.strip()
+        if len(country) < 2:
+            raise ValueError("Country must contain at least two characters")
+        return country
 
 
 class DocumentData(BaseModel):
@@ -45,19 +49,30 @@ class SubmitData(BaseModel):
 class Session(BaseModel):
     id: str
     customer_id: str
+    application_id: str | None = None
     country: str
     document_type: str
     status: Literal["draft", "verified"] = "draft"
     document: dict[str, Any] = Field(default_factory=dict)
     selfie: dict[str, Any] = Field(default_factory=dict)
     address: dict[str, Any] = Field(default_factory=dict)
+    address_upload: dict[str, Any] = Field(default_factory=dict)
     declarations: dict[str, bool] = Field(default_factory=dict)
     created_at: str
     updated_at: str
 
 
 sessions: dict[str, Session] = {}
-_session_sequence = 0
+
+
+def reload_sessions() -> None:
+    sessions.clear()
+    sessions.update(
+        {
+            session_id: Session.model_validate(payload)
+            for session_id, payload in database.load_entities("kyc_sessions").items()
+        }
+    )
 
 
 def now() -> str:
@@ -74,27 +89,43 @@ def get(session_id: str) -> Session:
 def save(session: Session) -> Session:
     session.updated_at = now()
     sessions[session.id] = session
+    store.save_entity("kyc_sessions", session)
     return session
 
 
 @router.post("/session", response_model=Session)
 def create(payload: SessionCreate) -> Session:
-    global _session_sequence
-    _session_sequence += 1
     stamp = now()
-    customer = store.get_customer(payload.customer_id)
+    if payload.customer_id is None:
+        customer = store.create_customer()
+        customer.kyc_status = "in_progress"
+        store.save_entity("customers", customer)
+        application = store.create_card_application(
+            customer.id,
+            "GEMCARDS Classic",
+        )
+        application_id = application.id
+    else:
+        customer = store.get_customer(payload.customer_id)
+        application_id = None
+        if (
+            customer.application_status != "card_active"
+            and customer.kyc_status != "verified"
+        ):
+            customer.application_status = "kyc_in_progress"
+            customer.kyc_status = "in_progress"
+            store.save_entity("customers", customer)
     session = Session(
-        id=f"KYC-DEMO-{_session_sequence:04d}",
+        id=f"KYC-DEMO-{store.next_sequence('kyc_session'):06d}",
         customer_id=customer.id,
+        application_id=application_id,
         country=payload.country,
         document_type=payload.document_type,
         created_at=stamp,
         updated_at=stamp,
     )
     sessions[session.id] = session
-    if customer.application_status != "card_active" and customer.kyc_status != "verified":
-        customer.application_status = "kyc_in_progress"
-        customer.kyc_status = "in_progress"
+    store.save_entity("kyc_sessions", session)
     return session
 
 
@@ -112,6 +143,9 @@ def status(session_id: str) -> Session:
 def document(session_id: str, payload: DocumentData) -> Session:
     session = get(session_id)
     session.document = payload.model_dump()
+    customer = store.get_customer(session.customer_id)
+    customer.name = payload.name
+    store.save_entity("customers", customer)
     return save(session)
 
 
@@ -131,7 +165,7 @@ def address(session_id: str, payload: AddressData) -> Session:
 
 @router.post("/{session_id}/address/upload")
 async def upload(session_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
-    get(session_id)
+    session = get(session_id)
     allowed_types = {"application/pdf", "image/jpeg", "image/png"}
     if file.content_type not in allowed_types:
         raise HTTPException(
@@ -141,12 +175,15 @@ async def upload(session_id: str, file: UploadFile = File(...)) -> dict[str, Any
     content = await file.read(10 * 1024 * 1024 + 1)
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Prototype limit is 10 MB")
-    return {
+    upload_metadata = {
         "filename": file.filename,
         "content_type": file.content_type,
         "size": len(content),
         "accepted": True,
     }
+    session.address_upload = upload_metadata
+    save(session)
+    return upload_metadata
 
 
 @router.post("/{session_id}/submit", response_model=Session)
@@ -166,7 +203,10 @@ def submit(session_id: str, payload: SubmitData) -> Session:
             status_code=409,
             detail="Liveness verification did not pass",
         )
+    store.complete_customer_kyc(session.customer_id)
     session.declarations = payload.model_dump()
     session.status = "verified"
-    store.complete_customer_kyc(session.customer_id)
     return save(session)
+
+
+reload_sessions()

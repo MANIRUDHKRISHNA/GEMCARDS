@@ -49,12 +49,12 @@ void main() {
                 'status': 'active',
               },
               '/api/v1/admin/transactions' => [],
-              '/api/v1/fraud' => [],
+              '/api/v1/admin/fraud' => [],
               '/api/v1/fraud/FRA-01/resolve' => {
                 'id': 'FRA-01',
                 'status': 'resolved',
               },
-              '/api/v1/disputes' => [],
+              '/api/v1/admin/disputes' => [],
               '/api/v1/disputes/DSP-01/status' => {
                 'id': 'DSP-01',
                 'status': 'investigating',
