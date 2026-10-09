@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 class GemcardsApiException implements Exception {
   const GemcardsApiException(
@@ -97,6 +99,83 @@ class GemcardsApiClient {
     'transaction_id': transactionId,
     'reason': reason,
     'details': details,
+  });
+
+  Future<Map<String, dynamic>> createKycSession({
+    required String country,
+    required String documentType,
+  }) => _postMap('/api/v1/kyc/session', {
+    'country': country,
+    'document_type': documentType,
+  });
+
+  Future<Map<String, dynamic>> saveKycDocument(
+    String sessionId, {
+    required String name,
+    required String dob,
+    required String idNumber,
+    required bool frontCaptured,
+    required bool backCaptured,
+  }) => _postMap('/api/v1/kyc/${Uri.encodeComponent(sessionId)}/document', {
+    'name': name,
+    'dob': dob,
+    'id_number': idNumber,
+    'front_captured': frontCaptured,
+    'back_captured': backCaptured,
+  });
+
+  Future<Map<String, dynamic>> saveKycSelfie(
+    String sessionId, {
+    required bool livenessPassed,
+    required double score,
+  }) => _postMap('/api/v1/kyc/${Uri.encodeComponent(sessionId)}/selfie', {
+    'liveness_passed': livenessPassed,
+    'face_match_score': score,
+  });
+
+  Future<Map<String, dynamic>> saveKycAddress(
+    String sessionId, {
+    required String address,
+    required String documentName,
+  }) => _postMap('/api/v1/kyc/${Uri.encodeComponent(sessionId)}/address', {
+    'address': address,
+    'document_name': documentName,
+  });
+
+  Future<Map<String, dynamic>> uploadKycAddressDocument(
+    String sessionId, {
+    required Uint8List bytes,
+    required String filename,
+    required String contentType,
+  }) async {
+    final request =
+        http.MultipartRequest(
+            'POST',
+            _uri(
+              '/api/v1/kyc/${Uri.encodeComponent(sessionId)}/address/upload',
+            ),
+          )
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'file',
+              bytes,
+              filename: filename,
+              contentType: MediaType.parse(contentType),
+            ),
+          );
+    final response = await _send(
+      () async => http.Response.fromStream(await _httpClient.send(request)),
+    );
+    return _decodeMap(response);
+  }
+
+  Future<Map<String, dynamic>> submitKyc(
+    String sessionId, {
+    required bool pepDeclared,
+    required bool termsAccepted,
+  }) => _postMap('/api/v1/kyc/${Uri.encodeComponent(sessionId)}/submit', {
+    'pep_declared': pepDeclared,
+    'terms_accepted': termsAccepted,
   });
 
   Future<Map<String, dynamic>> adminMetrics() =>

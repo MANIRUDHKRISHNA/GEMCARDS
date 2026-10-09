@@ -67,7 +67,7 @@ class GemCardVisual extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Text(
-              frozen ? 'FROZEN' : 'ACTIVE',
+              card.status.name.toUpperCase(),
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 11,

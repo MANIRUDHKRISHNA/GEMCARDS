@@ -503,7 +503,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     'Transaction operations',
     'Customer · merchant · card · amount · decision · risk · timestamp',
     transactions.isEmpty
-        ? const Center(child: Text('No transactions in the demo portfolio.'))
+        ? const Center(child: Text('No transactions in the sample portfolio.'))
         : ListView(
             children: [
               for (final item in transactions)
@@ -606,7 +606,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       final response = await repository.replaceCard(cardId);
       if (mounted) {
         _showMessage(
-          response['message']?.toString() ?? 'Replacement simulated.',
+          response['message']?.toString() ?? 'Replacement request processed.',
         );
         _reload();
       }
@@ -656,11 +656,10 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     ListView(
       children: [
         if (cards.isEmpty)
-          const ListTile(title: Text('No cards in the demo portfolio.'))
+          const ListTile(title: Text('No cards in the sample portfolio.'))
         else
           ...cards.map((card) {
             final status = card['status']?.toString() ?? 'unknown';
-            final frozen = status == 'frozen';
             final cardId = card['id']?.toString() ?? '';
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -677,6 +676,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                     '₹${card['limit'] ?? card['daily_limit'] ?? 0} limit',
                   ),
                   trailing: PopupMenuButton<String>(
+                    enabled: status == 'active' || status == 'frozen',
                     tooltip: 'Card operations',
                     onSelected: (action) {
                       if (action == 'freeze') {
@@ -693,24 +693,26 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                       }
                     },
                     itemBuilder: (_) => [
-                      if (!frozen)
+                      if (status == 'active')
                         const PopupMenuItem(
                           value: 'freeze',
                           child: Text('Freeze card'),
                         ),
-                      if (frozen)
+                      if (status == 'frozen')
                         const PopupMenuItem(
                           value: 'unfreeze',
                           child: Text('Unfreeze card'),
                         ),
-                      const PopupMenuItem(
-                        value: 'limit',
-                        child: Text('Change limit'),
-                      ),
-                      const PopupMenuItem(
-                        value: 'replace',
-                        child: Text('Simulate replacement'),
-                      ),
+                      if (status == 'active' || status == 'frozen')
+                        const PopupMenuItem(
+                          value: 'limit',
+                          child: Text('Change limit'),
+                        ),
+                      if (status == 'active')
+                        const PopupMenuItem(
+                          value: 'replace',
+                          child: Text('Simulate replacement'),
+                        ),
                     ],
                   ),
                 ),
@@ -764,7 +766,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   );
   Widget _disputes(List<Map<String, dynamic>> disputes) => _page(
     'Disputes',
-    'Status and timeline from the GEMCARDS demo service',
+    'Status and timeline from the GEMCARDS operations service',
     disputes.isEmpty
         ? const Center(child: Text('No disputes to review.'))
         : ListView(
@@ -991,7 +993,8 @@ class _SimulatorState extends State<_Simulator> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _result!['authorization_id']?.toString() ?? 'Offline demo',
+                    _result!['authorization_id']?.toString() ??
+                        'No authorization ID returned',
                   ),
                   const Divider(),
                   if ((_result!['reasons'] as List<dynamic>? ?? const [])

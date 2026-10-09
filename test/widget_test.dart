@@ -73,9 +73,9 @@ void main() {
     expect(find.text('Verify your document'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    final demoCapture = find.text('Camera unavailable? Use demo capture');
-    await tester.ensureVisible(demoCapture);
-    await tester.tap(demoCapture);
+    final sampleCapture = find.text('Camera unavailable? Use sample capture');
+    await tester.ensureVisible(sampleCapture);
+    await tester.tap(sampleCapture);
     await tester.pump();
     expect(find.text('Captured'), findsNWidgets(2));
     await tester.tap(find.text('Continue'));
@@ -84,7 +84,7 @@ void main() {
 
     await tester.tap(find.text('Need an accessible alternative?'));
     await tester.pump(const Duration(milliseconds: 300));
-    final assistedCheck = find.text('Continue with demo check');
+    final assistedCheck = find.text('Continue with sample check');
     await tester.ensureVisible(assistedCheck);
     await tester.tap(assistedCheck);
     await tester.pump(const Duration(milliseconds: 300));

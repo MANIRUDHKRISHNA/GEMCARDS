@@ -1,4 +1,4 @@
-enum CardStatus { active, frozen, pending, closed }
+enum CardStatus { active, frozen, pending, replaced, closed }
 
 enum TransactionStatus { approved, declined, flagged }
 
@@ -75,7 +75,8 @@ class Card {
       status: switch (status) {
         'frozen' => CardStatus.frozen,
         'pending' => CardStatus.pending,
-        'closed' || 'replaced' => CardStatus.closed,
+        'replaced' => CardStatus.replaced,
+        'closed' => CardStatus.closed,
         _ => CardStatus.active,
       },
       virtual:

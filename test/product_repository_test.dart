@@ -8,6 +8,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test('preserves the replaced card lifecycle state from the API', () {
+    final card = Card.fromJson({..._card, 'status': 'replaced'});
+    expect(card.status, CardStatus.replaced);
+  });
+
   test('decodes the backend dashboard and delegates card controls', () async {
     final requests = <http.Request>[];
     final repository = ApiProductRepository(

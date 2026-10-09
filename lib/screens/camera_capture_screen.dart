@@ -220,7 +220,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Go back and use the clearly marked demo capture option.',
+                      'Go back and use the clearly marked sample capture option.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white70, height: 1.4),
                     ),

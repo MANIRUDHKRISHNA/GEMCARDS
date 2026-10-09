@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../models/kyc_state.dart';
 import '../repositories/kyc_repository.dart';
+import '../services/api/gemcards_api_client.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/step_header.dart';
 import 'camera_capture_screen.dart';
@@ -82,11 +83,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
     });
     if (front && mounted) _editOcrDetails(result.ocrText.isEmpty);
     if (front) kyc.journeyStage = KycJourneyStage.documentFront;
-    if (!front) {
-      kyc.journeyStage = KycJourneyStage.documentBack;
-      await repository.saveDocument(kyc);
-      kyc.journeyStage = KycJourneyStage.documentVerified;
-    }
+    if (!front) kyc.journeyStage = KycJourneyStage.documentBack;
   }
 
   Future<void> _editOcrDetails(bool failed) async {
@@ -127,7 +124,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
                 const SizedBox(height: 7),
                 Text(
                   failed
-                      ? 'Enter the details manually to continue this demo.'
+                      ? 'Enter the sample details manually to continue.'
                       : 'Check the extracted information and make any corrections.',
                   style: Theme.of(
                     sheetContext,
@@ -227,7 +224,17 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
       kyc.faceMatchScore = result.score;
       kyc.journeyStage = KycJourneyStage.livenessVerified;
     });
-    await repository.saveSelfie(kyc);
+    try {
+      await repository.saveSelfie(kyc);
+    } on GemcardsApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        kyc.livenessPassed = false;
+        kyc.selfieCaptured = false;
+        kyc.journeyStage = KycJourneyStage.livenessPending;
+      });
+      _showRequestError(error);
+    }
   }
 
   Future<void> _pickAddressDocument() async {
@@ -237,17 +244,30 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
     );
     if (!mounted || result.isEmpty) return;
     final file = result.single;
-    final size = await file.length() ?? 0;
+    final reportedSize = await file.length();
     if (!mounted) return;
-    if (size > 10 * 1024 * 1024) {
+    if (reportedSize != null && reportedSize > 10 * 1024 * 1024) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Choose a file smaller than 10 MB.')),
       );
       return;
     }
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    final size = bytes.length;
+    if (size == 0 || size > 10 * 1024 * 1024) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Choose a non-empty file smaller than 10 MB.'),
+        ),
+      );
+      return;
+    }
     setState(() {
       kyc.addressDocument = file.name;
+      kyc.addressDocumentData = bytes;
       kyc.addressDocumentBytes = size;
+      kyc.addressDocumentUploaded = false;
     });
   }
 
@@ -256,12 +276,17 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
       case 1:
         return kyc.country.isNotEmpty && kyc.documentType.isNotEmpty;
       case 2:
-        return kyc.frontCaptured && kyc.backCaptured;
+        return kyc.frontCaptured &&
+            kyc.backCaptured &&
+            kyc.fullName.trim().isNotEmpty &&
+            kyc.dob.trim().isNotEmpty &&
+            kyc.idNumber.trim().isNotEmpty;
       case 3:
         return kyc.livenessPassed;
       case 4:
         return addressController.text.trim().isNotEmpty &&
-            kyc.addressDocument.isNotEmpty;
+            kyc.addressDocument.isNotEmpty &&
+            kyc.addressDocumentData != null;
       case 5:
         return kyc.declarationsComplete;
       default:
@@ -283,6 +308,13 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
+  void _showRequestError(GemcardsApiException error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(error.message)));
+  }
+
   Future<void> _continue() async {
     if (!_canContinue()) return;
     if (step == 1 && kyc.sessionId == null) {
@@ -292,8 +324,11 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
           country: kyc.country,
           documentType: kyc.documentType,
         );
-      } catch (_) {
-        kyc.sessionId = 'offline-demo';
+      } on GemcardsApiException catch (error) {
+        if (!mounted) return;
+        setState(() => submitting = false);
+        _showRequestError(error);
+        return;
       }
       if (!mounted) return;
       setState(() {
@@ -303,13 +338,40 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
       kyc.journeyStage = KycJourneyStage.identityComplete;
       return;
     }
-    if (step == 4) {
-      kyc.address = addressController.text.trim();
-      kyc.journeyStage = KycJourneyStage.addressVerified;
+    if (step == 2) {
       setState(() => submitting = true);
-      await repository.saveAddress(kyc);
+      try {
+        await repository.saveDocument(kyc);
+      } on GemcardsApiException catch (error) {
+        if (!mounted) return;
+        setState(() => submitting = false);
+        _showRequestError(error);
+        return;
+      }
       if (!mounted) return;
       setState(() {
+        kyc.journeyStage = KycJourneyStage.documentVerified;
+        submitting = false;
+        step++;
+      });
+      return;
+    }
+    if (step == 4) {
+      kyc.address = addressController.text.trim();
+      setState(() => submitting = true);
+      try {
+        await repository.saveAddress(kyc);
+        await repository.uploadAddressDocument(kyc);
+      } on GemcardsApiException catch (error) {
+        if (!mounted) return;
+        setState(() => submitting = false);
+        _showRequestError(error);
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        kyc.addressDocumentUploaded = true;
+        kyc.journeyStage = KycJourneyStage.addressVerified;
         submitting = false;
         step++;
       });
@@ -321,7 +383,19 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         kyc.processingStatus = ProcessingStatus.processing;
       });
       kyc.journeyStage = KycJourneyStage.processing;
-      final result = await repository.submit(kyc);
+      late final ProcessingStatus result;
+      try {
+        result = await repository.submit(kyc);
+      } on GemcardsApiException catch (error) {
+        if (!mounted) return;
+        setState(() {
+          submitting = false;
+          kyc.processingStatus = ProcessingStatus.draft;
+          kyc.journeyStage = KycJourneyStage.review;
+        });
+        _showRequestError(error);
+        return;
+      }
       if (!mounted) return;
       setState(() {
         submitting = false;
@@ -388,7 +462,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  'DEMO',
+                  'SAMPLE',
                   style: Theme.of(
                     context,
                   ).textTheme.labelSmall?.copyWith(color: AppTheme.accentDark),
@@ -402,6 +476,15 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         child: Column(
           children: [
             _ProgressBar(step: step),
+            if (repository.isOffline)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: _InlineNotice(
+                  icon: Icons.cloud_off_outlined,
+                  message:
+                      'Offline sample mode · verification changes stay on this device.',
+                ),
+              ),
             Expanded(
               child: SingleChildScrollView(
                 keyboardDismissBehavior:
@@ -457,7 +540,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
                     if (step < 5) ...[
                       const SizedBox(height: 8),
                       Text(
-                        'Your progress is saved on this device',
+                        'Use sample information only · no real identity decision',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -604,7 +687,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
               if (kyc.idNumber.isEmpty) kyc.idNumber = 'DEMO 4821';
             }),
             icon: const Icon(Icons.accessibility_new_rounded, size: 19),
-            label: const Text('Camera unavailable? Use demo capture'),
+            label: const Text('Camera unavailable? Use sample capture'),
           ),
         ),
         const SizedBox(height: 20),
@@ -642,7 +725,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          'Details are read automatically where possible. Check them before continuing.',
+          'Review the sample details before continuing.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
@@ -665,9 +748,9 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
           _VerificationSummary(
             icon: Icons.verified_user_outlined,
             title: 'Liveness verified',
-            status: 'DEMO CHECK',
+            status: 'SAMPLE CHECK',
             detail:
-                'Identity match simulated • ${(kyc.faceMatchScore * 100).toStringAsFixed(0)}% demo match',
+                'Sample identity match • ${(kyc.faceMatchScore * 100).toStringAsFixed(0)}%',
           )
         else
           PrimaryButton(
@@ -699,7 +782,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         title: const Text('Accessible alternative'),
         content: const SingleChildScrollView(
           child: Text(
-            'In production, this offers an alternative verification method. For this prototype, continue with a clearly simulated assisted check.',
+            'This sample flow does not contact a verification provider. Continue with an assisted sample check instead.',
           ),
         ),
         actions: [
@@ -712,7 +795,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
               });
               Navigator.pop(dialogContext);
             },
-            child: const Text('Continue with demo check'),
+            child: const Text('Continue with sample check'),
           ),
         ],
         actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
@@ -868,7 +951,11 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
                         Text(
                           kyc.addressDocument.isEmpty
                               ? 'Utility bill, bank statement or tax document'
-                              : _formatFileSize(kyc.addressDocumentBytes ?? 0),
+                              : kyc.addressDocumentUploaded
+                              ? repository.isOffline
+                                    ? 'Available in offline sample mode'
+                                    : 'Uploaded for this verification session'
+                              : 'Selected · ${_formatFileSize(kyc.addressDocumentBytes ?? 0)}',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -944,7 +1031,8 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
               label: 'Proof of address',
               value: kyc.addressDocument.isEmpty
                   ? 'Not attached'
-                  : kyc.addressDocument,
+                  : '${kyc.addressDocument} · '
+                        '${repository.isOffline ? 'on this device' : 'uploaded'}',
             ),
           ],
         ),
@@ -981,8 +1069,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         ),
         _DeclarationRow(
           value: kyc.pepDeclared,
-          text:
-              'I am not a politically exposed person (prototype declaration).',
+          text: 'I am not a politically exposed person.',
           onChanged: (value) =>
               setState(() => kyc.pepDeclared = value ?? false),
         ),
@@ -995,7 +1082,8 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
         const SizedBox(height: 10),
         const _InlineNotice(
           icon: Icons.info_outline_rounded,
-          message: 'Verification results shown here are for demo purposes.',
+          message:
+              'Sample-only flow. No external KYC provider or real identity decision is connected.',
         ),
       ],
     );
@@ -1019,7 +1107,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
     final message = switch (kyc.processingStatus) {
       ProcessingStatus.verified => 'Your GEMCARDS onboarding is complete.',
       ProcessingStatus.underReview || ProcessingStatus.processing =>
-        'We’re reviewing your information. We’ll update you when it’s ready.',
+        'This sample status does not represent a real verification review.',
       ProcessingStatus.actionRequired =>
         kyc.errorMessage ?? 'Your document image is too blurry.',
       ProcessingStatus.failed =>
@@ -1118,7 +1206,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
                       isVerified
                           ? 'Card application ready'
                           : isUnderReview
-                          ? 'Estimated response'
+                          ? 'Sample review state'
                           : 'Next step',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
@@ -1127,7 +1215,7 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
                       isVerified
                           ? 'Continue to the next step in your card application.'
                           : isUnderReview
-                          ? 'Within 2 hours'
+                          ? 'No real-world review is performed.'
                           : 'Review your details and try again.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
@@ -1138,6 +1226,13 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
           ),
         ),
         const SizedBox(height: 18),
+        _InlineNotice(
+          icon: Icons.science_outlined,
+          message: repository.isOffline
+              ? 'Offline sample result only. No real identity decision or card issuance takes place.'
+              : 'Sample result only. No real identity decision or card issuance takes place.',
+        ),
+        const SizedBox(height: 10),
         if (isVerified)
           PrimaryButton(
             label: 'Go to dashboard',
@@ -1165,13 +1260,11 @@ class _KycFlowScreenState extends State<KycFlowScreen> {
             child: const Text('Return to review'),
           ),
         ] else ...[
-          const _InlineNotice(
-            icon: Icons.science_outlined,
-            message:
-                'This is a simulated demo result, not a real identity decision.',
-          ),
           const SizedBox(height: 14),
-          TextButton(onPressed: _reset, child: const Text('Start a new demo')),
+          TextButton(
+            onPressed: _reset,
+            child: const Text('Start a new sample journey'),
+          ),
         ],
       ],
     );
@@ -1799,97 +1892,6 @@ class _DeclarationRow extends StatelessWidget {
                   child: Text(
                     text,
                     style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class GemcardsDashboardScreen extends StatelessWidget {
-  const GemcardsDashboardScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('GEMCARDS'),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 20),
-            child: Icon(Icons.account_circle_outlined),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Welcome', style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 6),
-              Text(
-                'Your customer onboarding is complete.',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: AppTheme.muted),
-              ),
-              const SizedBox(height: 28),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  color: AppTheme.accentDark,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.credit_card_outlined,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                    SizedBox(height: 25),
-                    Text(
-                      'CARD APPLICATION',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 11,
-                        letterSpacing: 1.1,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: 7),
-                    Text(
-                      'Ready for your next step',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              const _InlineNotice(
-                icon: Icons.science_outlined,
-                message:
-                    'Demo dashboard. Verification and card readiness are simulated.',
-              ),
-              const SizedBox(height: 28),
-              PrimaryButton(
-                label: 'Start a new onboarding',
-                icon: Icons.arrow_forward_rounded,
-                onPressed: () => Navigator.of(context).pushReplacement(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const KycFlowScreen(),
                   ),
                 ),
               ),

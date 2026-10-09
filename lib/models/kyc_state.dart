@@ -1,5 +1,31 @@
-enum ProcessingStatus { draft, processing, verified, underReview, actionRequired, failed }
-enum KycJourneyStage { draft, identityComplete, documentFront, documentBack, documentVerified, livenessPending, livenessVerified, addressPending, addressVerified, review, processing, verified, underReview, actionRequired, failed }
+import 'dart:typed_data';
+
+enum ProcessingStatus {
+  draft,
+  processing,
+  verified,
+  underReview,
+  actionRequired,
+  failed,
+}
+
+enum KycJourneyStage {
+  draft,
+  identityComplete,
+  documentFront,
+  documentBack,
+  documentVerified,
+  livenessPending,
+  livenessVerified,
+  addressPending,
+  addressVerified,
+  review,
+  processing,
+  verified,
+  underReview,
+  actionRequired,
+  failed,
+}
 
 /// In-memory state for one demo journey. It never persists document images or
 /// real identity credentials; captures are held only for the active UI flow.
@@ -12,7 +38,9 @@ class KycState {
   String idNumber = '';
   String address = '';
   String addressDocument = '';
+  Uint8List? addressDocumentData;
   int? addressDocumentBytes;
+  bool addressDocumentUploaded = false;
   bool frontCaptured = false;
   bool backCaptured = false;
   bool selfieCaptured = false;
@@ -25,17 +53,31 @@ class KycState {
   ProcessingStatus processingStatus = ProcessingStatus.draft;
   KycJourneyStage journeyStage = KycJourneyStage.draft;
 
-  bool get declarationsComplete => accuracyDeclared && pepDeclared && termsAccepted;
+  bool get declarationsComplete =>
+      accuracyDeclared && pepDeclared && termsAccepted;
 
   void reset() {
     country = 'India';
     sessionId = null;
     documentType = 'National ID';
-    fullName = ''; dob = ''; idNumber = ''; address = ''; addressDocument = '';
-    addressDocumentBytes = null; frontCaptured = false; backCaptured = false;
-    selfieCaptured = false; livenessPassed = false; faceMatchScore = 0;
-    accuracyDeclared = false; pepDeclared = false; termsAccepted = false;
-    errorMessage = null; processingStatus = ProcessingStatus.draft;
+    fullName = '';
+    dob = '';
+    idNumber = '';
+    address = '';
+    addressDocument = '';
+    addressDocumentData = null;
+    addressDocumentBytes = null;
+    addressDocumentUploaded = false;
+    frontCaptured = false;
+    backCaptured = false;
+    selfieCaptured = false;
+    livenessPassed = false;
+    faceMatchScore = 0;
+    accuracyDeclared = false;
+    pepDeclared = false;
+    termsAccepted = false;
+    errorMessage = null;
+    processingStatus = ProcessingStatus.draft;
     journeyStage = KycJourneyStage.draft;
   }
 }

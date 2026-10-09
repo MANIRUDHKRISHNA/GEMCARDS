@@ -95,7 +95,7 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
           SnackBar(
             content: Text(
               _repository.isOffline
-                  ? 'Virtual card created in offline demo mode.'
+                  ? 'Virtual card added to offline sample data.'
                   : 'Virtual card created.',
             ),
           ),
@@ -158,7 +158,7 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'We couldn’t load your demo account right now.',
+                      'We couldn’t load your account right now.',
                       textAlign: TextAlign.center,
                       style: Theme.of(
                         context,
@@ -276,12 +276,12 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
               const Padding(
                 padding: EdgeInsets.only(right: 4),
                 child: Tooltip(
-                  message: 'Offline demo data',
+                  message: 'Offline sample data',
                   child: Icon(Icons.cloud_off_outlined, size: 20),
                 ),
               ),
             IconButton(
-              tooltip: 'Open admin demo',
+              tooltip: 'Open admin console',
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const AdminConsoleScreen(),
@@ -372,7 +372,7 @@ class _Home extends StatelessWidget {
           const SizedBox(height: 4),
           if (isOffline)
             const Text(
-              'Offline demo mode',
+              'Offline sample data · changes stay on this device',
               style: TextStyle(color: AppTheme.muted, fontSize: 12),
             ),
           Text(
@@ -726,7 +726,7 @@ class _CardsState extends State<_Cards> {
           const Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text(
-              'Offline demo mode · card changes remain local',
+              'Offline mode · card changes stay on this device',
               style: TextStyle(color: AppTheme.muted, fontSize: 12),
             ),
           ),
@@ -735,44 +735,78 @@ class _CardsState extends State<_Cards> {
           isThreeLine: true,
           key: const ValueKey('freeze-card-control'),
           value: widget.isFrozen(_card),
-          onChanged: _updating
+          onChanged:
+              _updating ||
+                  !const {
+                    CardStatus.active,
+                    CardStatus.frozen,
+                  }.contains(_card.status)
               ? null
               : (value) => widget.onFrozen(_card, value),
           title: const Text('Freeze card'),
           subtitle: Text(
-            widget.isFrozen(_card)
-                ? 'Card is temporarily frozen'
-                : 'Card is active',
+            const {CardStatus.active, CardStatus.frozen}.contains(_card.status)
+                ? widget.isFrozen(_card)
+                      ? 'Card is temporarily frozen'
+                      : 'Card is active'
+                : 'Controls unavailable for ${_card.status.name} cards',
           ),
         ),
         _toggle(
           'Online payments',
           _card.onlineEnabled,
           (v) => _updateControl('online_enabled', v),
-          enabled: !_updating,
+          enabled:
+              !_updating &&
+              const {
+                CardStatus.active,
+                CardStatus.frozen,
+              }.contains(_card.status),
         ),
         _toggle(
           'Contactless payments',
           _card.contactlessEnabled,
           (v) => _updateControl('contactless_enabled', v),
-          enabled: !_updating,
+          enabled:
+              !_updating &&
+              const {
+                CardStatus.active,
+                CardStatus.frozen,
+              }.contains(_card.status),
         ),
         _toggle(
           'International payments',
           _card.internationalEnabled,
           (v) => _updateControl('international_enabled', v),
-          enabled: !_updating,
+          enabled:
+              !_updating &&
+              const {
+                CardStatus.active,
+                CardStatus.frozen,
+              }.contains(_card.status),
         ),
         _toggle(
           'ATM withdrawals',
           _card.atmEnabled,
           (v) => _updateControl('atm_enabled', v),
-          enabled: !_updating,
+          enabled:
+              !_updating &&
+              const {
+                CardStatus.active,
+                CardStatus.frozen,
+              }.contains(_card.status),
         ),
         ListTile(
           title: const Text('Daily spending limit'),
           trailing: Text('₹${_card.dailyLimit.toStringAsFixed(0)}'),
-          onTap: _updating ? null : _editDailyLimit,
+          onTap:
+              _updating ||
+                  !const {
+                    CardStatus.active,
+                    CardStatus.frozen,
+                  }.contains(_card.status)
+              ? null
+              : _editDailyLimit,
         ),
         const Divider(),
         if (!widget.cards.any((card) => card.virtual))
@@ -960,7 +994,7 @@ class _More extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.shield_outlined),
           title: const Text('Security activity'),
-          subtitle: const Text('Review demo fraud signals'),
+          subtitle: const Text('Review security alerts'),
           onTap: () => Navigator.of(c).push(
             MaterialPageRoute(
               builder: (_) => FraudActivityScreen(repository: repository),
@@ -1034,7 +1068,7 @@ class _More extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.support_agent_outlined),
           title: const Text('Support'),
-          subtitle: const Text('Help for your demo account'),
+          subtitle: const Text('Help and account information'),
           onTap: () => Navigator.of(
             c,
           ).push(MaterialPageRoute(builder: (_) => const SupportScreen())),
@@ -1230,7 +1264,11 @@ class _VirtualCardScreenState extends State<VirtualCardScreen> {
               ),
               const ListTile(title: Text('CVV'), trailing: Text('•••')),
               FilledButton.icon(
-                onPressed: () => widget.onFrozen(!widget.frozen),
+                onPressed:
+                    card.status == CardStatus.active ||
+                        card.status == CardStatus.frozen
+                    ? () => widget.onFrozen(!widget.frozen)
+                    : null,
                 icon: Icon(
                   widget.frozen
                       ? Icons.play_arrow_rounded
@@ -1241,17 +1279,6 @@ class _VirtualCardScreenState extends State<VirtualCardScreen> {
                       ? 'Unfreeze virtual card'
                       : 'Freeze virtual card',
                 ),
-              ),
-              TextButton.icon(
-                onPressed: () => ScaffoldMessenger.of(c).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Virtual card deletion is simulated in this demo.',
-                    ),
-                  ),
-                ),
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Delete virtual card'),
               ),
             ],
           );
@@ -1429,7 +1456,13 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Dispute opened for demo review.')),
+          SnackBar(
+            content: Text(
+              widget.repository!.isOffline
+                  ? 'Dispute added to offline sample data.'
+                  : 'Dispute submitted.',
+            ),
+          ),
         );
       }
     } on GemcardsApiException catch (error) {
@@ -1569,22 +1602,11 @@ class _RewardsScreenState extends State<RewardsScreen> {
               style: Theme.of(context).textTheme.displaySmall,
             ),
             Text(
-              'Worth ${rewards.currency} ${rewards.availableValue.toStringAsFixed(0)} in this demo',
+              'Estimated value: ${rewards.currency} ${rewards.availableValue.toStringAsFixed(0)}',
               style: const TextStyle(color: AppTheme.muted),
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Rewards balance is provided by the GEMCARDS demo service.',
-            ),
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Redemption is simulated for this demo.'),
-                ),
-              ),
-              child: const Text('Redeem points'),
-            ),
+            const Text('Sample rewards balance. Redemption is not connected.'),
           ],
         );
       },
@@ -1631,7 +1653,7 @@ class _FraudActivityScreenState extends State<FraudActivityScreen> {
           return const _EmptyState(
             icon: Icons.verified_user_outlined,
             title: 'No open alerts',
-            message: 'There are no demo fraud signals to review.',
+            message: 'There are no open alerts to review.',
           );
         }
         return ListView(
@@ -1853,8 +1875,8 @@ class SupportScreen extends StatelessWidget {
     body: const Padding(
       padding: EdgeInsets.all(24),
       child: Text(
-        'GEMCARDS support is represented with synthetic demo content. '
-        'No support requests are sent from this prototype.',
+        'GEMCARDS is a product of Gemini Software Solutions. '
+        'Support requests are not connected in this sample app.',
       ),
     ),
   );

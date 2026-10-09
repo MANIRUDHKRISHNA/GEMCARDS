@@ -1,5 +1,5 @@
 name: gemcards_onboarding_prototype
-description: GEMCARDS customer onboarding prototype by Gemini Software Solutions.
+description: GEMCARDS customer card and identity experience by Gemini Software Solutions.
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -13,6 +13,7 @@ dependencies:
   file_picker: ^13.1.0
   google_mlkit_text_recognition: ^0.17.1
   http: ^1.6.0
+  http_parser: ^4.1.2
   cupertino_icons: ^1.0.8
 
 dev_dependencies:

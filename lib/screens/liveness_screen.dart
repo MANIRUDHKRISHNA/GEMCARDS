@@ -236,7 +236,7 @@ class _LivenessScreenState extends State<LivenessScreen>
                   const SizedBox(height: 12),
                   if (_cameraUnavailable) ...[
                     const Text(
-                      'Camera unavailable • demo check only',
+                      'Camera unavailable • sample check only',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
@@ -259,7 +259,7 @@ class _LivenessScreenState extends State<LivenessScreen>
             right: 24,
             bottom: 26,
             child: PrimaryButton(
-              label: _checking ? 'Verifying…' : 'Complete demo check',
+              label: _checking ? 'Verifying…' : 'Complete sample check',
               icon: Icons.face_retouching_natural_rounded,
               onPressed: _checking ? null : _complete,
             ),
@@ -287,7 +287,7 @@ class _LivenessScreenState extends State<LivenessScreen>
               top: false,
               child: Center(
                 child: Text(
-                  'Simulated demo check • no real identity decision',
+                  'Sample check • no real identity decision',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white60, fontSize: 11),
                 ),
